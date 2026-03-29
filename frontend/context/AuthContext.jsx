@@ -1,4 +1,5 @@
 import { createContext, useState, useContext, useEffect } from "react";
+import api from "../lib/api";
 
 const AuthContext = createContext();
 
@@ -17,12 +18,28 @@ export const AuthProvider = ({ children }) => {
     }
   }, []);
 
-  const login = (userData, tokenData) => {
+  const login = async (email, password) => {
+    const res = await api.post("/auth/login", { email, password });
+    const { user: userData, token: tokenData } = res.data;
+    
     setUser(userData);
     setToken(tokenData);
 
     localStorage.setItem("token", tokenData);
     localStorage.setItem("user", JSON.stringify(userData));
+    return res.data;
+  };
+
+  const register = async (data) => {
+    const res = await api.post("/auth/register", data);
+    const { user: userData, token: tokenData } = res.data;
+
+    setUser(userData);
+    setToken(tokenData);
+
+    localStorage.setItem("token", tokenData);
+    localStorage.setItem("user", JSON.stringify(userData));
+    return res.data;
   };
 
   const logout = () => {
@@ -36,7 +53,7 @@ export const AuthProvider = ({ children }) => {
   const isAuthenticated = !!token;
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, isAuthenticated }}>
+    <AuthContext.Provider value={{ user, token, login, register, logout, isAuthenticated }}>
       {children}
     </AuthContext.Provider>
   );
