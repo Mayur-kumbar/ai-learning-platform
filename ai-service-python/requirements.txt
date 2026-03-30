@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+openai-whisper
+keybert
+sentence-transformers
+chromadb
+google-generativeai
+pymupdf
+httpx
+python-multipart
+python-dotenv
+groq
