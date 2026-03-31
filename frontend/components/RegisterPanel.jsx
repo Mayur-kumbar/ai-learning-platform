@@ -1,7 +1,6 @@
 import { useEffect } from "react";
 
 
-
 function RegisterPanel() {
 
   useEffect(() => {
