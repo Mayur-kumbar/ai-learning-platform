@@ -15,7 +15,8 @@ import {
 export default function Dashboard() {
   const [lectures, setLectures] = useState([]);
   const { user } = useAuth();
-  const role = user ? "instructor" : null;
+  console.log("User in Dashboard:", user);
+  const role = "instructor" ; // Placeholder role logic
   const router = useRouter();
 
   useEffect(() => {
