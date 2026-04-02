@@ -18,7 +18,7 @@ export default function FileUpload() {
     try {
       setUploading(true);
 
-      const res = await axios.post("/api/upload", formData, {
+      const res = await axios.post("/lectures/upload", formData, {
         headers: {
           "Content-Type": "multipart/form-data",
         },

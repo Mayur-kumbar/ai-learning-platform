@@ -10,6 +10,8 @@ import {
   PolarAngleAxis,
   ResponsiveContainer,
 } from "recharts";
+import { useEffect } from "react";
+import ProtectedRoute from "@/components/ProtectedRoute";
 
 export default function InstructorDashboard() {
   const { user } = useAuth();
@@ -23,110 +25,117 @@ export default function InstructorDashboard() {
     { subject: "Data", A: 65 },
   ];
 
+  console.log("User data in dashboard:", user); // Debugging line
+
+  useEffect(() => {
+    if (user?.role !== "instructor") {
+      router.push("/dashboard"); // Redirect to main dashboard if not instructor
+      return null; // or a loading spinner
+    }
+  }, [user, router]);
+
   return (
-    <div className="flex min-h-screen bg-gradient-to-br from-[#020617] via-black to-black text-white">
+    <ProtectedRoute>
+      <div className="flex min-h-screen bg-gradient-to-br from-[#020617] via-black to-black text-white">
+        {/* SIDEBAR */}
+        <div className="w-64 p-6 border-r border-white/10 backdrop-blur-xl">
+          <h1 className="text-2xl font-bold text-yellow-400 mb-10">
+            LearnX AI
+          </h1>
 
-      {/* SIDEBAR */}
-      <div className="w-64 p-6 border-r border-white/10 backdrop-blur-xl">
-        <h1 className="text-2xl font-bold text-yellow-400 mb-10">
-          LearnX AI
-        </h1>
+          <nav className="space-y-4">
+            <SidebarItem
+              icon={<Home />}
+              text="Dashboard"
+              active
+              onClick={() => router.push("/instructor/dashboard")}
+            />
 
-        <nav className="space-y-4">
-          <SidebarItem
-            icon={<Home />}
-            text="Dashboard"
-            active
-            onClick={() => router.push("/instructor/dashboard")}
-          />
-
-          {/* ✅ FIXED HERE */}
-          <SidebarItem
-            icon={<Book />}
-            text="Courses"
-            onClick={() => router.push("/instructor/courses")}
-          />
-
-          <SidebarItem
-            icon={<Bot />}
-            text="AI Tutor"
-            onClick={() => alert("AI Tutor coming")}
-          />
-
-          <SidebarItem
-            icon={<BarChart />}
-            text="Analytics"
-            onClick={() => alert("Analytics coming")}
-          />
-
-          <SidebarItem
-            icon={<Settings />}
-            text="Settings"
-            onClick={() => alert("Settings coming")}
-          />
-        </nav>
-      </div>
-
-      {/* MAIN */}
-      <div className="flex-1 p-8 space-y-6">
-
-        {/* HERO */}
-        <motion.div className="p-6 rounded-2xl bg-gradient-to-r from-yellow-400/10 to-amber-500/10 border border-white/10 flex justify-between items-center">
-          <div>
-            <h2 className="text-3xl font-bold">
-              Welcome {user?.name || "Instructor"}, 👋
-            </h2>
-            <p className="text-white/70 mt-2">
-              Manage your courses and track performance.
-            </p>
-          </div>
-          <div className="text-5xl">🎓</div>
-        </motion.div>
-
-        {/* FILE UPLOAD */}
-        <FileUpload />
-
-        {/* QUICK ACTIONS */}
-        <div className="grid md:grid-cols-3 gap-6">
-
-          <GlassCard title="Quick Actions">
-            <button
+            {/* ✅ FIXED HERE */}
+            <SidebarItem
+              icon={<Book />}
+              text="Courses"
               onClick={() => router.push("/instructor/courses")}
-              className="w-full bg-yellow-400 text-black py-2 rounded-lg font-semibold hover:scale-105 transition"
-            >
-              Go to Courses
-            </button>
-          </GlassCard>
+            />
 
-          {/* ANALYTICS */}
-          <GlassCard title="Course Analytics">
-            <ResponsiveContainer width="100%" height={200}>
-              <RadarChart data={skillData}>
-                <PolarGrid stroke="#ffffff20" />
-                <PolarAngleAxis dataKey="subject" stroke="#ccc" />
-                <Radar
-                  dataKey="A"
-                  stroke="#facc15"
-                  fill="#facc15"
-                  fillOpacity={0.3}
-                />
-              </RadarChart>
-            </ResponsiveContainer>
-          </GlassCard>
+            <SidebarItem
+              icon={<Bot />}
+              text="AI Tutor"
+              onClick={() => alert("AI Tutor coming")}
+            />
 
-          {/* EVENTS */}
-          <GlassCard title="Upcoming Events">
-            <p className="text-yellow-400">LIVE Webinar</p>
-            <p className="mt-2">Instructor session</p>
+            <SidebarItem
+              icon={<BarChart />}
+              text="Analytics"
+              onClick={() => alert("Analytics coming")}
+            />
 
-            <button className="mt-4 w-full bg-gradient-to-r from-yellow-400 to-amber-500 text-black py-2 rounded-xl font-semibold hover:scale-105 transition">
-              Host Now
-            </button>
-          </GlassCard>
+            <SidebarItem
+              icon={<Settings />}
+              text="Settings"
+              onClick={() => alert("Settings coming")}
+            />
+          </nav>
+        </div>
 
+        {/* MAIN */}
+        <div className="flex-1 p-8 space-y-6">
+          {/* HERO */}
+          <motion.div className="p-6 rounded-2xl bg-gradient-to-r from-yellow-400/10 to-amber-500/10 border border-white/10 flex justify-between items-center">
+            <div>
+              <h2 className="text-3xl font-bold">
+                Welcome {user?.name || "Instructor"}, 👋
+              </h2>
+              <p className="text-white/70 mt-2">
+                Manage your courses and track performance.
+              </p>
+            </div>
+            <div className="text-5xl">🎓</div>
+          </motion.div>
+
+          {/* FILE UPLOAD */}
+          <FileUpload />
+
+          {/* QUICK ACTIONS */}
+          <div className="grid md:grid-cols-3 gap-6">
+            <GlassCard title="Quick Actions">
+              <button
+                onClick={() => router.push("/instructor/courses")}
+                className="w-full bg-yellow-400 text-black py-2 rounded-lg font-semibold hover:scale-105 transition"
+              >
+                Go to Courses
+              </button>
+            </GlassCard>
+
+            {/* ANALYTICS */}
+            <GlassCard title="Course Analytics">
+              <ResponsiveContainer width="100%" height={200}>
+                <RadarChart data={skillData}>
+                  <PolarGrid stroke="#ffffff20" />
+                  <PolarAngleAxis dataKey="subject" stroke="#ccc" />
+                  <Radar
+                    dataKey="A"
+                    stroke="#facc15"
+                    fill="#facc15"
+                    fillOpacity={0.3}
+                  />
+                </RadarChart>
+              </ResponsiveContainer>
+            </GlassCard>
+
+            {/* EVENTS */}
+            <GlassCard title="Upcoming Events">
+              <p className="text-yellow-400">LIVE Webinar</p>
+              <p className="mt-2">Instructor session</p>
+
+              <button className="mt-4 w-full bg-gradient-to-r from-yellow-400 to-amber-500 text-black py-2 rounded-xl font-semibold hover:scale-105 transition">
+                Host Now
+              </button>
+            </GlassCard>
+          </div>
         </div>
       </div>
-    </div>
+    </ProtectedRoute>
   );
 }
 
