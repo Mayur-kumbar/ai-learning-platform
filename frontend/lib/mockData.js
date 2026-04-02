@@ -22,7 +22,12 @@ export const mockQuiz = [
   {
     question: "What is AI?",
     options: ["Machine", "Intelligence", "Artificial Intelligence", "None"],
-    answer: "Artificial Intelligence",
+    correctAnswer: 2,
+  },
+  {
+    question: "Which is ML library?",
+    options: ["React", "TensorFlow", "HTML", "CSS"],
+    correctAnswer: 1,
   },
 ];
 
