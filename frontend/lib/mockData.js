@@ -3,6 +3,11 @@ export const mockUser = {
   name: "Shravan",
   email: "shravan@example.com",
   role: "student",
+
+  id: 2,
+  name: "Aditya",
+  email: "aditya@example.com", 
+  role: "teacher",
 };
 
 export const mockLectures = [
