@@ -93,8 +93,6 @@ export default function InstructorDashboard() {
             <div className="text-5xl">🎓</div>
           </motion.div>
 
-          {/* FILE UPLOAD */}
-          <FileUpload />
 
           {/* QUICK ACTIONS */}
           <div className="grid md:grid-cols-3 gap-6">

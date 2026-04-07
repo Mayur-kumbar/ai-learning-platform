@@ -11,6 +11,7 @@ import lectureRoutes from './routes/lectures.js';
 import quizRoutes from './routes/quiz.js';
 import analyticsRoutes from './routes/analytics.js';
 import EngagementLog from './models/EngagementLog.js';
+import courseRoutes from './routes/course.js';
 
 dotenv.config();
 
@@ -26,6 +27,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
+app.use('/api/courses', courseRoutes)
 app.use('/api/auth', authRoutes);
 app.use('/api/lectures', lectureRoutes);
 app.use('/api/quiz', quizRoutes);
