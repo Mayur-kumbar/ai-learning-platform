@@ -1,38 +1,27 @@
+import api from "@/lib/api";
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 
 export default function CourseDetails() {
   const router = useRouter();
   const { id } = router.query;
+  console.log("Course ID from URL:", id);
 
   const [course, setCourse] = useState(null);
 
   useEffect(() => {
     if (!id) return;
 
-    // ✅ TEMP MOCK DATA (later from backend)
-    const courses = [
-      {
-        _id: "1",
-        title: "AI Mastery",
-        lectures: [
-          { _id: "l1", title: "Intro to AI" },
-          { _id: "l2", title: "Search Algorithms" },
-          { _id: "l3", title: "Neural Networks" },
-        ],
-      },
-      {
-        _id: "2",
-        title: "Machine Learning Bootcamp",
-        lectures: [
-          { _id: "l1", title: "Linear Regression" },
-          { _id: "l2", title: "Decision Trees" },
-        ],
-      },
-    ];
+    const fetchCourse = async () => {
+      try {
+        const res = await api.get(`/courses/${id}`);
+        setCourse(res.data);
+      } catch (error) {
+        console.error("Error fetching course", error);
+      }
+    };
 
-    const selectedCourse = courses.find(c => c._id === id);
-    setCourse(selectedCourse);
+    fetchCourse();
   }, [id]);
 
   if (!course) {
@@ -55,6 +44,7 @@ export default function CourseDetails() {
             onClick={() => router.push(`/lectures/${lecture._id}`)}
             className="p-4 bg-white/10 rounded-xl cursor-pointer hover:bg-white/20"
           >
+            {console.log("Lecture data:", lecture)}
             {lecture.title}
           </div>
         ))}
