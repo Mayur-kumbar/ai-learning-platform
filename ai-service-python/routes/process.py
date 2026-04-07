@@ -18,7 +18,7 @@ class ProcessRequest(BaseModel):
     fileType: str
 
 async def run_pipeline(lecture_id: str, file_path: str, file_type: str):
-    node_url = os.environ.get("NODE_SERVICE_URL", "http://localhost:3000")
+    node_url = os.environ.get("NODE_SERVICE_URL", "http://localhost:4000")
 
     try:
         # step 1 — extract text

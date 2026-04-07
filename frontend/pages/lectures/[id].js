@@ -1,4 +1,7 @@
+"use client";
+
 import { useRouter } from "next/router";
+import api from "@/lib/api";
 import { useEffect, useState, useRef } from "react";
 import videojs from "video.js";
 import "video.js/dist/video-js.css";
@@ -6,7 +9,6 @@ import "video.js/dist/video-js.css";
 export default function LecturePage() {
   const router = useRouter();
   const { id } = router.query;
-
   const videoRef = useRef(null);
   const playerRef = useRef(null);
 
@@ -17,9 +19,29 @@ export default function LecturePage() {
   const [answer, setAnswer] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // 🎥 VIDEO.JS SETUP
+  const BASE_URL =
+    process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+
+  // ✅ FETCH LECTURE
   useEffect(() => {
-    if (!lecture || playerRef.current) return;
+    if (!id) return;
+
+    const fetchLecture = async () => {
+      try {
+        const res = await api.get(`/lectures/${id}`);
+        setLecture(res.data.lecture); // ✅ FIXED
+      } catch (error) {
+        console.error("Error fetching lecture", error);
+      }
+    };
+
+    fetchLecture();
+  }, [id]);
+
+  // ✅ VIDEO.JS INIT (ONLY IF VIDEO)
+  useEffect(() => {
+    if (!lecture || lecture.fileType !== "video") return;
+    if (playerRef.current) return;
 
     playerRef.current = videojs(videoRef.current, {
       controls: true,
@@ -27,7 +49,7 @@ export default function LecturePage() {
       fluid: true,
       sources: [
         {
-          src: lecture.fileUrl,
+          src: `${BASE_URL}${lecture.fileUrl}`,
           type: "video/mp4",
         },
       ],
@@ -45,50 +67,7 @@ export default function LecturePage() {
     };
   }, [lecture]);
 
-  // 🔥 CONNECTED COURSE + LECTURE STRUCTURE
-  useEffect(() => {
-    if (!id) return;
-
-    const courses = [
-      {
-        _id: "1",
-        lectures: [
-          {
-            _id: "l1",
-            title: "Intro to AI",
-            fileUrl: "https://www.w3schools.com/html/mov_bbb.mp4",
-            transcript: "Intro to AI transcript...",
-            summary: ["AI basics", "History of AI"],
-            topics: ["AI"],
-          },
-          {
-            _id: "l2",
-            title: "Neural Networks",
-            fileUrl: "https://www.w3schools.com/html/mov_bbb.mp4",
-            transcript: "Neural network transcript...",
-            summary: ["Neurons", "Layers"],
-            topics: ["ML", "NN"],
-          },
-        ],
-      },
-    ];
-
-    let foundLecture = null;
-
-    for (let course of courses) {
-      const lectureData = course.lectures.find(
-        (l) => l._id === id
-      );
-      if (lectureData) {
-        foundLecture = lectureData;
-        break;
-      }
-    }
-
-    setLecture(foundLecture);
-  }, [id]);
-
-  // 🤖 AI HANDLER (FIXED)
+  // 🤖 AI HANDLER
   const handleAsk = async () => {
     if (!question.trim()) return;
 
@@ -97,7 +76,7 @@ export default function LecturePage() {
 
     setTimeout(() => {
       setAnswer(
-        `AI Answer: "${question}" is related to the key concepts explained in this lecture. Focus on understanding the fundamentals and examples shown in the video.`
+        `AI Answer: "${question}" is related to key concepts in this lecture. Review transcript and examples.`
       );
       setLoading(false);
     }, 1000);
@@ -110,38 +89,56 @@ export default function LecturePage() {
   return (
     <div className="min-h-screen bg-[#020617] text-white p-6 grid md:grid-cols-2 gap-6">
 
-      {/* 🎥 VIDEO SECTION */}
+      {/* 🎥 / 📄 CONTENT SECTION */}
       <div>
         <h1 className="text-2xl font-bold mb-4">
           {lecture.title}
         </h1>
 
-        <video
-          ref={videoRef}
-          className="video-js vjs-big-play-centered rounded-xl"
-          playsInline
-        />
+        {/* ✅ VIDEO */}
+        {lecture.fileType === "video" && (
+          <video
+            ref={videoRef}
+            className="video-js vjs-big-play-centered rounded-xl"
+            playsInline
+          />
+        )}
 
-        {/* SUMMARY TOGGLE */}
+        {/* ✅ PDF */}
+        {lecture.fileType === "pdf" && (
+          <iframe
+            src={`${BASE_URL}${lecture.fileUrl}`}
+            className="w-full h-[500px] rounded-xl"
+          />
+        )}
+
+        {/* ✅ FALLBACK */}
+        {!lecture.fileUrl && (
+          <div className="p-4 bg-white/10 rounded-xl">
+            <p>No media available. Read lecture below.</p>
+          </div>
+        )}
+
+        {/* 🔘 SUMMARY TOGGLE */}
         <button
           onClick={() => setShowSummary(!showSummary)}
-          className="mt-4 bg-white/10 px-4 py-2 rounded-lg hover:bg-white/20 transition"
+          className="mt-4 bg-white/10 px-4 py-2 rounded-lg hover:bg-white/20"
         >
           Toggle Summary
         </button>
 
-        {/* SUMMARY */}
+        {/* 📌 SUMMARY */}
         {showSummary && (
           <ul className="mt-3 list-disc ml-5 text-white/80">
-            {lecture.summary.map((point, i) => (
+            {lecture.summary?.map((point, i) => (
               <li key={i}>{point}</li>
             ))}
           </ul>
         )}
 
-        {/* TOPICS */}
+        {/* 🧠 TOPICS */}
         <div className="mt-4">
-          {lecture.topics.map((topic, i) => (
+          {lecture.topics?.map((topic, i) => (
             <span
               key={i}
               className="inline-block bg-cyan-400/20 text-cyan-300 px-3 py-1 rounded-full text-sm mr-2 mb-2"
@@ -175,7 +172,9 @@ export default function LecturePage() {
       {/* 📜 TRANSCRIPT */}
       <div className="bg-white/5 p-4 rounded-xl h-[500px] overflow-y-scroll">
         <h2 className="font-semibold mb-2">Transcript</h2>
-        <p className="text-white/80">{lecture.transcript}</p>
+        <p className="text-white/80 whitespace-pre-line">
+          {lecture.transcript}
+        </p>
       </div>
 
       {/* 🤖 AI TUTOR */}
@@ -198,19 +197,16 @@ export default function LecturePage() {
           Ask
         </button>
 
-        {/* ⏳ LOADING */}
         {loading && (
           <p className="mt-3 text-yellow-400">Thinking...</p>
         )}
 
-        {/* 💬 ANSWER */}
         {answer && (
           <div className="mt-4 p-3 bg-white/10 rounded-lg">
             {answer}
           </div>
         )}
       </div>
-
     </div>
   );
 }

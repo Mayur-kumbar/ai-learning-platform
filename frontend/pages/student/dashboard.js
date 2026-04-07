@@ -10,6 +10,7 @@ import {
   PolarAngleAxis,
   ResponsiveContainer,
 } from "recharts";
+import ProtectedRoute from "@/components/ProtectedRoute";
 
 export default function StudentDashboard() {
   const [courses, setCourses] = useState([]);
@@ -17,15 +18,15 @@ export default function StudentDashboard() {
   const router = useRouter();
 
   useEffect(() => {
-        // ✅ ONLY ENROLLED COURSES
-        setCourses([
-            {
-            _id: "1",
-            title: "AI Mastery",
-            lectures: 10,
-            },
-        ]);
-    }, []);
+    // ✅ ONLY ENROLLED COURSES
+    setCourses([
+      {
+        _id: "1",
+        title: "AI Mastery",
+        lectures: 10,
+      },
+    ]);
+  }, []);
 
   const skillData = [
     { subject: "AI", A: 80 },
@@ -36,90 +37,86 @@ export default function StudentDashboard() {
   ];
 
   return (
-    <div className="flex min-h-screen bg-gradient-to-br from-[#020617] via-black to-black text-white">
+    <ProtectedRoute>
+      <div className="flex min-h-screen bg-gradient-to-br from-[#020617] via-black to-black text-white">
+        {/* SIDEBAR */}
+        <div className="w-64 p-6 border-r border-white/10 backdrop-blur-xl">
+          <h1 className="text-2xl font-bold text-yellow-400 mb-10">
+            LearnX AI
+          </h1>
 
-      {/* SIDEBAR */}
-      <div className="w-64 p-6 border-r border-white/10 backdrop-blur-xl">
-        <h1 className="text-2xl font-bold text-yellow-400 mb-10">
-          LearnX AI
-        </h1>
+          <nav className="space-y-4">
+            <SidebarItem icon={<Home />} text="Dashboard" active />
+            <SidebarItem
+              icon={<Book />}
+              text="Courses"
+              onClick={() => router.push("/courses")}
+            />
+            <SidebarItem icon={<Bot />} text="AI Tutor" />
+            <SidebarItem icon={<BarChart />} text="Progress" />
+            <SidebarItem icon={<Settings />} text="Settings" />
+          </nav>
+        </div>
 
-        <nav className="space-y-4">
-          <SidebarItem icon={<Home />} text="Dashboard" active />
-          <SidebarItem 
-                icon={<Book />} 
-                text="Courses" 
-                onClick={() => router.push("/courses")}
-          />
-          <SidebarItem icon={<Bot />} text="AI Tutor" />
-          <SidebarItem icon={<BarChart />} text="Progress" />
-          <SidebarItem icon={<Settings />} text="Settings" />
-        </nav>
-      </div>
+        {/* MAIN */}
+        <div className="flex-1 p-8 space-y-6">
+          {/* HERO */}
+          <motion.div className="p-6 rounded-2xl bg-gradient-to-r from-yellow-400/10 to-amber-500/10 border border-white/10 flex justify-between items-center">
+            <div>
+              <h2 className="text-3xl font-bold">
+                Welcome {user?.name || "Student"}, 👋
+              </h2>
+              <p className="text-white/70 mt-2">
+                Continue your learning journey.
+              </p>
+            </div>
 
-      {/* MAIN */}
-      <div className="flex-1 p-8 space-y-6">
+            <div className="text-5xl">📚</div>
+          </motion.div>
 
-        {/* HERO */}
-        <motion.div
-          className="p-6 rounded-2xl bg-gradient-to-r from-yellow-400/10 to-amber-500/10 border border-white/10 flex justify-between items-center"
-        >
-          <div>
-            <h2 className="text-3xl font-bold">
-              Welcome {user?.name || "Student"}, 👋
-            </h2>
-            <p className="text-white/70 mt-2">
-              Continue your learning journey.
-            </p>
+          {/* GRID */}
+          <div className="grid md:grid-cols-3 gap-6">
+            {/* ✅ COURSES (UPDATED) */}
+            <GlassCard title="Enrolled Courses">
+              {courses.map((course) => (
+                <div
+                  key={course._id}
+                  onClick={() => router.push(`/courses/${course._id}`)}
+                  className="mb-4 cursor-pointer hover:bg-white/10 p-3 rounded"
+                >
+                  <h3 className="font-semibold">{course.title}</h3>
+                  <p className="text-sm text-gray-400">
+                    {course.lectures} lectures
+                  </p>
+                </div>
+              ))}
+            </GlassCard>
+
+            {/* AI Tutor */}
+            <GlassCard title="AI Tutor">
+              <HoverItem text="Ask doubts about ML" />
+              <HoverItem text="Revise NLP concepts" />
+            </GlassCard>
+
+            {/* SKILL */}
+            <GlassCard title="Your Progress">
+              <ResponsiveContainer width="100%" height={200}>
+                <RadarChart data={skillData}>
+                  <PolarGrid stroke="#ffffff20" />
+                  <PolarAngleAxis dataKey="subject" stroke="#ccc" />
+                  <Radar
+                    dataKey="A"
+                    stroke="#facc15"
+                    fill="#facc15"
+                    fillOpacity={0.3}
+                  />
+                </RadarChart>
+              </ResponsiveContainer>
+            </GlassCard>
           </div>
-
-          <div className="text-5xl">📚</div>
-        </motion.div>
-
-        {/* GRID */}
-        <div className="grid md:grid-cols-3 gap-6">
-
-          {/* ✅ COURSES (UPDATED) */}
-          <GlassCard title="Enrolled Courses">
-            {courses.map((course) => (
-              <div
-                key={course._id}
-                onClick={() => router.push(`/courses/${course._id}`)}
-                className="mb-4 cursor-pointer hover:bg-white/10 p-3 rounded"
-              >
-                <h3 className="font-semibold">{course.title}</h3>
-                <p className="text-sm text-gray-400">
-                  {course.lectures} lectures
-                </p>
-              </div>
-            ))}
-          </GlassCard>
-
-          {/* AI Tutor */}
-          <GlassCard title="AI Tutor">
-            <HoverItem text="Ask doubts about ML" />
-            <HoverItem text="Revise NLP concepts" />
-          </GlassCard>
-
-          {/* SKILL */}
-          <GlassCard title="Your Progress">
-            <ResponsiveContainer width="100%" height={200}>
-              <RadarChart data={skillData}>
-                <PolarGrid stroke="#ffffff20" />
-                <PolarAngleAxis dataKey="subject" stroke="#ccc" />
-                <Radar
-                  dataKey="A"
-                  stroke="#facc15"
-                  fill="#facc15"
-                  fillOpacity={0.3}
-                />
-              </RadarChart>
-            </ResponsiveContainer>
-          </GlassCard>
-
         </div>
       </div>
-    </div>
+    </ProtectedRoute>
   );
 }
 
