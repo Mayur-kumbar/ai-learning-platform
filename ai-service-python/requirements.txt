@@ -10,3 +10,5 @@ httpx
 python-multipart
 python-dotenv
 groq
+
+youtube-transcript-api>=1.0.0
