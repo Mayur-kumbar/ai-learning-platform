@@ -175,4 +175,7 @@ pyrightconfig.json
 
 chroma_db/
 
+test.py
+test_models.py
+
 # End of https://www.toptal.com/developers/gitignore/api/python
