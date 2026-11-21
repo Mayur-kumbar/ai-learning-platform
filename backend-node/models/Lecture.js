@@ -11,36 +11,35 @@ const lectureSchema = new mongoose.Schema({
     ref: 'User',
     required: true,
   },
-  fileUrl: {
-    type: String,
-  },
+  fileUrl: { type: String },
   fileType: {
     type: String,
-    enum: ['video', 'pdf', 'slides'],
+    enum: ['video', 'pdf', 'slides', 'youtube'],
   },
-  transcript: {
+  youtubeUrl: { type: String },
+  youtubeVideoId: { type: String },
+  transcript: { type: String, default: '' },
+  summary: { type: String, default: '' },
+  topics: { type: [String], default: [] },
+  transcriptStatus: {
     type: String,
-    default: '',
+    enum: ['pending', 'processing', 'completed', 'failed', 'unavailable'],
+    default: 'pending',
   },
-  summary: {
+  transcriptError: { type: String, default: '' },
+  quizStatus: {
     type: String,
-    default: '',
+    enum: ['pending', 'processing', 'completed', 'failed', 'unavailable'],
+    default: 'pending',
   },
-  topics: {
-    type: [String],
-    default: [],
-  },
+  quizError: { type: String, default: '' },
   status: {
     type: String,
     enum: ['pending', 'processing', 'done', 'failed'],
     default: 'pending',
   },
-  createdAt: {
-    type: Date,
-    default: Date.now,
-  },
+  createdAt: { type: Date, default: Date.now },
 });
 
-const Lecture = mongoose.model('Lecture', lectureSchema);
-
+const Lecture = mongoose.models.Lecture || mongoose.model('Lecture', lectureSchema);
 export default Lecture;
