@@ -1,9 +1,13 @@
 "use client";
 
+import Brand from "@/components/Brand";
+
+import Link from "next/link";
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 import api from "@/lib/api";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import ReadingForm from '@/components/ReadingForm';
 import FileUpload from "@/components/FileUpload";
 
 function extractVideoId(url) {
@@ -22,6 +26,12 @@ export default function CourseDetail() {
   const [youtubeUrl, setYoutubeUrl] = useState("");
   const [youtubeError, setYoutubeError] = useState("");
 
+  const [courseError, setCourseError] = useState('');
+  async function refreshCourse() {
+    const response = await api.get(`/courses/${id}`);
+    setCourse(response.data);
+  }
+
   // 🚀 FETCH COURSE
   useEffect(() => {
     if (!id) return;
@@ -31,12 +41,24 @@ export default function CourseDetail() {
         const res = await api.get(`/courses/${id}`);
         setCourse(res.data);
       } catch (err) {
-        console.error("Error fetching course", err);
+        setCourseError(err.message);
       }
     };
 
     fetchCourse();
   }, [id]);
+
+  const processing = course?.lectures?.some(item => item.status === "processing");
+  useEffect(() => {
+    if (!id || !processing) return;
+    const controller = new AbortController();
+    const timer = setInterval(() => {
+      api.get(`/courses/${id}`, {signal: controller.signal})
+        .then(({data}) => { if (!controller.signal.aborted) setCourse(data); })
+        .catch(err => { if (!controller.signal.aborted) setCourseError(err.message); });
+    }, 5000);
+    return () => { clearInterval(timer); controller.abort(); };
+  }, [id, processing]);
 
   // 🚀 ADD YOUTUBE LECTURE
   const handleAddYouTubeLecture = async () => {
@@ -68,30 +90,41 @@ export default function CourseDetail() {
     }
   };
 
+  if (!course && courseError) return <p role="alert">{courseError}</p>;
   if (!course) return <p className="text-white p-6">Loading...</p>;
 
   const videoPreviewId = extractVideoId(youtubeUrl);
 
   return (
     <ProtectedRoute role="instructor">
-      <div className="min-h-screen bg-black text-white p-8">
+      <div className="course-page">
+      <header className="course-brand"><Brand /></header>
 
         <h1 className="text-3xl font-bold mb-4">
           {course.title}
         </h1>
 
-        <p className="text-gray-400 mb-6">
+        <p className="text-slate-300 mb-6">
           {course.description}
         </p>
 
+        <div className="mb-6 flex items-center gap-4">
+          <span>{course.published ? 'Published' : 'Draft'} · {course.enrollmentCount || 0} enrolled</span>
+          {!course.published && <button disabled={!course.lectures?.length} className="bg-blue-700 text-white px-4 py-2 rounded disabled:opacity-50" onClick={async () => {
+            try { await api.post(`/courses/${id}/publish`); await refreshCourse(); }
+            catch (error) { setCourseError(error.message); }
+          }}>Publish course</button>}
+          <Link href="/instructor/dashboard" className="underline">Instructor dashboard</Link>
+        </div>
+        {courseError && <p role="alert">{courseError}</p>}
         {/* ➕ ADD LECTURE */}
-        <div className="mb-6 bg-white/5 p-4 rounded-xl border border-white/10">
+        <div className="surface-card mb-6">
           <h2 className="text-xl font-semibold mb-4">Add New Lecture</h2>
           <input
             value={lectureTitle}
             onChange={(e) => setLectureTitle(e.target.value)}
             placeholder="Lecture title"
-            className="w-full p-3 mb-4 rounded bg-white/10 border border-white/20 focus:outline-none focus:border-yellow-400"
+            className="w-full p-3 mb-4 rounded bg-slate-800 border border-slate-600 focus:outline-none focus:border-blue-400"
           />
 
           <div className="flex space-x-4 mb-4">
@@ -99,8 +132,8 @@ export default function CourseDetail() {
               onClick={() => setLectureSource("upload")}
               className={`px-4 py-2 rounded transition-colors ${
                 lectureSource === "upload"
-                  ? "bg-yellow-400 text-black font-semibold"
-                  : "bg-white/10 text-white hover:bg-white/20"
+                  ? "bg-blue-700 text-white font-semibold"
+                  : "bg-slate-800 text-slate-100 hover:bg-slate-700"
               }`}
             >
               Upload File
@@ -109,14 +142,16 @@ export default function CourseDetail() {
               onClick={() => setLectureSource("youtube")}
               className={`px-4 py-2 rounded transition-colors ${
                 lectureSource === "youtube"
-                  ? "bg-yellow-400 text-black font-semibold"
-                  : "bg-white/10 text-white hover:bg-white/20"
+                  ? "bg-blue-700 text-white font-semibold"
+                  : "bg-slate-800 text-slate-100 hover:bg-slate-700"
               }`}
             >
               YouTube URL
             </button>
           </div>
 
+          <button className="mb-4 underline" onClick={() => setLectureSource("reading")}>Add an instructor-written reading and quiz</button>
+          {lectureSource === "reading" && <ReadingForm courseId={id} title={lectureTitle} onCreated={async () => { await refreshCourse(); setLectureTitle(""); }} />}
           {lectureSource === "upload" && (
             <FileUpload
               courseId={id}
@@ -138,11 +173,11 @@ export default function CourseDetail() {
                   setYoutubeError("");
                 }}
                 placeholder="https://www.youtube.com/watch?v=..."
-                className="w-full p-3 rounded bg-white/10 border border-white/20 focus:outline-none focus:border-yellow-400"
+                className="w-full p-3 rounded bg-slate-800 border border-slate-600 focus:outline-none focus:border-blue-400"
               />
               
               {youtubeError && (
-                <p className="text-red-400 text-sm">{youtubeError}</p>
+                <p className="text-red-300 text-sm">{youtubeError}</p>
               )}
 
               {videoPreviewId && (
@@ -160,7 +195,7 @@ export default function CourseDetail() {
               <button
                 onClick={handleAddYouTubeLecture}
                 disabled={!lectureTitle.trim() || !youtubeUrl.trim()}
-                className="mt-3 bg-yellow-400 text-black px-6 py-2 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                className="mt-3 bg-blue-700 text-white px-6 py-2 rounded disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Add YouTube Lecture
               </button>
@@ -172,14 +207,14 @@ export default function CourseDetail() {
         <div className="mt-6 space-y-3">
           <h2 className="text-xl font-semibold mb-3">Course Lectures</h2>
           {course.lectures?.length === 0 && (
-            <p className="text-white/50">No lectures yet.</p>
+            <p className="text-slate-300">No lectures yet.</p>
           )}
           {course.lectures?.map((lec) => (
             <div
               key={lec._id}
-              className="p-3 bg-white/10 rounded"
+              className="p-3 bg-slate-800 rounded"
             >
-              {lec.title}
+              <a className="underline" href={`/lectures/${lec._id}`}>{lec.title}</a> · {lec.status} · quiz {lec.quizStatus || "pending"}
             </div>
           ))}
         </div>

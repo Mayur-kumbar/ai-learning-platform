@@ -1,3 +1,4 @@
+import Brand from "@/components/Brand";
 import { useEffect, useRef } from "react";
 
 export default function LoginPanel() {
@@ -43,8 +44,7 @@ export default function LoginPanel() {
 
       {/* BRAND */}
       <div className="panel-brand">
-        <span className="brand-mark">⬡</span>
-        <span className="brand-name">Cognify</span>
+        <Brand />
       </div>
 
       {/* TEXT */}

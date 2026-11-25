@@ -22,7 +22,7 @@ app.add_middleware(
 
 app.include_router(process.router)
 app.include_router(engagement.router)
-app.include_router(recommendations.router)
+# The public recommendation API runs in Node and enforces course membership.
 
 @app.get("/health")
 async def health():

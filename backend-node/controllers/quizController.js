@@ -9,7 +9,7 @@ const publicQuestion = (question) => ({
   question: question.question,
   options: question.options,
   timestamp: question.timestamp ?? null,
-  explanation: question.explanation || '',
+  topic: question.topic || '',
 });
 
 export const getQuiz = async (req, res) => {
@@ -43,7 +43,7 @@ export const checkAnswer = async (req, res) => {
 
     if (
       !validObjectId(lectureId) ||
-      !validObjectId(questionId) ||
+      !questionId ||
       !Number.isInteger(selectedIndex) ||
       selectedIndex < 0 ||
       selectedIndex > 3
@@ -54,11 +54,25 @@ export const checkAnswer = async (req, res) => {
     }
 
     const quiz = await Quiz.findOne({ lectureId });
-    if (!quiz) {
+    if (!quiz || !quiz.questions.length) {
       return res.status(404).json({ error: 'Quiz not found for this lecture' });
     }
 
-    const question = quiz.questions.id(questionId);
+    // Support both MongoDB subdocument ObjectId, custom ID, and numeric index
+    let question = null;
+    if (validObjectId(questionId)) {
+      question = quiz.questions.id(questionId);
+    }
+    if (!question) {
+      question = quiz.questions.find((q) => q._id?.toString() === String(questionId));
+    }
+    if (!question) {
+      const idx = Number(String(questionId).replace(/\D+/g, ''));
+      if (Number.isInteger(idx) && idx >= 0 && idx < quiz.questions.length) {
+        question = quiz.questions[idx];
+      }
+    }
+
     if (!question) {
       return res.status(404).json({ error: 'Question not found in this quiz' });
     }
@@ -106,7 +120,7 @@ export const submitQuiz = async (req, res) => {
     if (
       answers.length !== quiz.questions.length ||
       answers.some((answer) =>
-        !Number.isInteger(Number(answer)) ||
+        !Number.isInteger(answer) ||
         Number(answer) < 0 ||
         Number(answer) > 3
       )
@@ -127,19 +141,35 @@ export const submitQuiz = async (req, res) => {
     const total = quiz.questions.length;
     const score = Math.round((correct / total) * 100);
 
-    await QuizResult.create({
+    const result = {
       studentId: req.user._id,
       lectureId: quiz.lectureId,
       quizId: quiz._id,
       score,
       answers: normalizedAnswers,
-    });
+      outcomes: quiz.questions.map((item, index) => ({
+        question: item.question, topic: item.topic || '', explanation: item.explanation,
+        correct: normalizedAnswers[index] === item.correctIndex,
+      })),
+    };
+    const key = req.body.attemptKey;
+    if (key !== undefined && (typeof key !== 'string' || !/^[a-zA-Z0-9-]{8,100}$/.test(key))) {
+      return res.status(400).json({error:'Invalid attempt key'});
+    }
+    if (key) {
+      const filter = {studentId:req.user._id, quizId:quiz._id, attemptKey:key};
+      const saved = await QuizResult.findOneAndUpdate(filter, {$setOnInsert: {...result, attemptKey:key}}, {upsert:true, new:true});
+      if (JSON.stringify(saved.answers) !== JSON.stringify(normalizedAnswers)) return res.status(409).json({error:'This attempt was already submitted'});
+    } else {
+      await QuizResult.create(result);
+    }
 
     return res.status(200).json({
       score,
       correct,
       total,
       correctAnswers,
+      explanations: quiz.questions.map(item => item.explanation),
     });
   } catch (error) {
     console.error('[quiz:submitQuiz]', error);

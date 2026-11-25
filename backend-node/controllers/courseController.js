@@ -25,7 +25,9 @@ const createCourse = async (req, res) => {
 
 const getCourses = async (req, res) => {
   try {
-    const courses = await Course.find().populate("instructorId", "name");
+    const filter = req.user.role === 'instructor' ? { instructorId: req.user._id } : { published: true };
+    if (req.query.enrolled === 'true' && req.user.role === 'student') filter.students = req.user._id;
+    const courses = await Course.find(filter).select('-students').sort({createdAt: -1}).populate("instructorId", "name");
     return res.status(200).json(courses);
   } catch (error) {
     return res.status(500).json({ error: error.message });
@@ -35,13 +37,14 @@ const getCourses = async (req, res) => {
 
 const getCourseById = async (req, res) => {
   try {
-    const course = await Course.findById(req.params.courseId)
+    const course = await Course.findOne({ _id: req.params.courseId, ...(req.user.role === 'instructor' ? {instructorId: req.user._id} : {published: true}) })
       .populate("instructorId", "name")
-      .populate("lectures");
+      .populate("lectures", "title fileType status transcriptStatus quizStatus");
     if (!course) {
       return res.status(404).json({ error: "Course not found" });
     }
-    return res.status(200).json(course);
+    const { students = [], ...details } = course.toObject();
+    return res.json({ ...details, enrolled: students.some(id => id.equals(req.user._id)), enrollmentCount: req.user.role === 'instructor' ? students.length : undefined });
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }
