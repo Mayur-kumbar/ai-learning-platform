@@ -17,6 +17,7 @@ router = APIRouter()
 
 
 class ProcessRequest(BaseModel):
+    callbackToken: str
     lectureId: str
     filePath: str = ""
     fileType: str
@@ -27,10 +28,10 @@ def get_node_url() -> str:
     return os.environ.get("NODE_SERVICE_URL", "http://localhost:4000").rstrip("/")
 
 
-async def send_callback(lecture_id: str, payload: dict) -> None:
+async def send_callback(lecture_id: str, token: str, payload: dict) -> None:
     url = f"{get_node_url()}/api/lectures/{lecture_id}/callback"
     async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.put(url, json=payload)
+        response = await client.put(url, json=payload, headers={"Authorization": f"Bearer {token}"})
         response.raise_for_status()
 
 
@@ -38,6 +39,7 @@ async def run_pipeline(
     lecture_id: str,
     file_path: str,
     file_type: str,
+    callback_token: str,
     youtube_video_id: str = None,
 ):
     try:
@@ -52,8 +54,8 @@ async def run_pipeline(
 
             if not result.get("success"):
                 error = result.get("error", "YouTube transcript unavailable")
-                await send_callback(lecture_id, {
-                    "status": "done",
+                await send_callback(lecture_id, callback_token, {
+                    "status": "partial",
                     "transcriptStatus": "unavailable",
                     "transcriptError": error,
                     "quizStatus": "unavailable",
@@ -79,10 +81,18 @@ async def run_pipeline(
             raise ValueError("Transcript extraction returned empty content.")
 
         print("[pipeline] extracting topics")
-        topics = extract_topics(transcript) or []
+        try:
+            topics = extract_topics(transcript) or []
+        except Exception:
+            topics = []
+            print("[pipeline] topic extraction unavailable")
 
         print("[pipeline] generating summary")
-        summary = summarise(transcript) or ""
+        try:
+            summary = summarise(transcript) or ""
+        except Exception:
+            summary = ""
+            print("[pipeline] summary unavailable")
 
         # Keep transcript processing successful even if AI quiz generation fails.
         quiz_questions = []
@@ -99,27 +109,33 @@ async def run_pipeline(
             print(f"[pipeline] quiz generation failed: {quiz_error}")
 
         print("[pipeline] storing embeddings")
-        store_lecture(lecture_id, transcript)
+        try:
+            store_lecture(lecture_id, transcript)
+            index_status = "completed"
+        except Exception:
+            index_status = "failed"
+            print("[pipeline] indexing unavailable; retaining extracted material")
 
         payload = {
             "transcript": transcript,
             "summary": summary,
             "topics": topics,
             "quizQuestions": quiz_questions,
-            "status": "done",
+            "status": "done" if quiz_questions and summary and topics and index_status == "completed" else "partial",
+            "indexStatus": index_status,
             "transcriptStatus": "completed",
             "quizStatus": quiz_status,
             "quizError": quiz_error,
         }
 
         print("[pipeline] sending callback to Node")
-        await send_callback(lecture_id, payload)
+        await send_callback(lecture_id, callback_token, payload)
         print(f"[pipeline] processing completed for lecture {lecture_id}")
 
     except Exception as exc:
         print(f"[pipeline] lecture processing failed: {exc}")
         try:
-            await send_callback(lecture_id, {
+            await send_callback(lecture_id, callback_token, {
                 "status": "failed",
                 "transcriptStatus": "failed",
                 "transcriptError": str(exc),
@@ -140,6 +156,7 @@ async def process_lecture(
         body.lectureId,
         body.filePath,
         body.fileType,
+        body.callbackToken,
         body.youtubeVideoId,
     )
     return {"status": "processing_started"}

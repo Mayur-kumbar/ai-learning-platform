@@ -1,4 +1,5 @@
 import React from "react";
+import { useAuth } from "../context/AuthContext";
 
 const AuthForm = ({
   title,
@@ -10,8 +11,9 @@ const AuthForm = ({
   footer,
   children,
 }) => {
+  const { ready } = useAuth();
   return (
-    <form className="auth-form" onSubmit={onSubmit}>
+    <form method="post" className="auth-form" onSubmit={onSubmit}>
       
       <h2 className="form-title">{title}</h2>
       {subtitle && <p className="form-subtitle">{subtitle}</p>}
@@ -25,7 +27,7 @@ const AuthForm = ({
       <button
         type="submit"
         className={`submit-btn ${loading ? "loading" : ""}`}
-        disabled={loading}
+        disabled={loading || !ready}
       >
         {loading ? "Processing..." : submitLabel}
       </button>

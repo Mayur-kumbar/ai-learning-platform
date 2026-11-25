@@ -38,7 +38,7 @@ export default function FileUpload({ courseId, title, onUploadComplete }) {
         },
       });
 
-      const lectureId = res.data.id;
+      const lectureId = res.data.lectureId;
 
       // 🔁 POLLING — check processing status
       // const interval = setInterval(async () => {
@@ -68,27 +68,27 @@ export default function FileUpload({ courseId, title, onUploadComplete }) {
   };
 
   return (
-    <div className="p-4 bg-white/5 border border-white/10 rounded-xl backdrop-blur-xl">
+    <div className="p-4 bg-slate-800 border border-slate-700 rounded-xl backdrop-blur-xl">
       {/* Course context indicator */}
       {courseId ? (
-        <p className="text-xs text-green-400 mb-2">
+        <p className="text-xs text-emerald-300 mb-2">
           📁 Uploading to course: <span className="font-mono">{courseId}</span>
         </p>
       ) : (
-        <p className="text-xs text-red-400 mb-2">⚠️ No course selected</p>
+        <p className="text-xs text-red-300 mb-2">⚠️ No course selected</p>
       )}
 
       <input
         type="file"
         // accept="video/*"
         onChange={(e) => setFile(e.target.files[0])}
-        className="mb-3 text-sm text-white/70"
+        className="mb-3 text-sm text-slate-300"
       />
 
       <button
         onClick={handleUpload}
         disabled={uploading || !courseId}
-        className="bg-gradient-to-r from-cyan-400 to-green-400 text-black px-4 py-2 rounded-xl font-semibold hover:scale-105 transition disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+        className="bg-blue-700 text-white px-4 py-2 rounded-xl font-semibold hover:-translate-y-0.5 transition disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
       >
         {uploading ? "Uploading..." : "Upload Lecture"}
       </button>
@@ -96,13 +96,13 @@ export default function FileUpload({ courseId, title, onUploadComplete }) {
       {/* Progress Bar */}
       {progress > 0 && (
         <div className="mt-4">
-          <div className="w-full h-2 bg-white/10 rounded">
+          <div className="w-full h-2 bg-slate-800 rounded">
             <div
               className="h-2 bg-cyan-400 rounded transition-all duration-300"
               style={{ width: `${progress}%` }}
             />
           </div>
-          <p className="text-sm mt-1 text-white/60">{progress}%</p>
+          <p className="text-sm mt-1 text-slate-300">{progress}%</p>
         </div>
       )}
     </div>

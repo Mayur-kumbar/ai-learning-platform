@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { useRouter } from "next/router";
 import api from "@/lib/api";
 import {
@@ -9,9 +10,14 @@ import {
 } from "react";
 import videojs from "video.js";
 import "video.js/dist/video-js.css";
+import { pausePlayingLecture } from "@/lib/engagementScoring";
+import { useEngagementDetection } from "@/lib/engagementDetector";
+import PrivacyConsentModal from "@/components/engagement/PrivacyConsentModal";
+import EngagementStatusBadge from "@/components/engagement/EngagementStatusBadge";
+import AbsencePauseOverlay from "@/components/engagement/AbsencePauseOverlay";
 
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+  (process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000").replace(/\/api\/?$/, "");
 
 const AI_ASK_ENDPOINT =
   process.env.NEXT_PUBLIC_AI_ASK_ENDPOINT || "/ai/ask";
@@ -119,6 +125,11 @@ function normalizeQuiz(payload) {
 }
 
 export default function LecturePage() {
+  const { query } = useRouter();
+  return <LecturePlayer key={query.id || "loading"} />;
+}
+
+function LecturePlayer() {
   const router = useRouter();
   const { id } = router.query;
 
@@ -165,6 +176,12 @@ export default function LecturePage() {
 
   const [focusEvents, setFocusEvents] = useState(0);
   const [focusNotice, setFocusNotice] = useState("");
+
+  // ── Engagement Detection State ──────────────────────────────────────────────
+  const [engagementEnabled, setEngagementEnabled] = useState(false);
+  const [engagementMode, setEngagementMode] = useState("camera");
+  const [showPrivacyModal, setShowPrivacyModal] = useState(false);
+  const [pauseReason, setPauseReason] = useState(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [activeTranscriptId, setActiveTranscriptId] = useState(null);
@@ -183,9 +200,48 @@ export default function LecturePage() {
     );
   }, [transcriptSegments, transcriptSearch]);
 
+  const positionRef = useRef(0);
+  useEffect(() => { positionRef.current = currentTime; }, [currentTime]);
+  useEffect(() => {
+    if (!lecture || !["video", "youtube"].includes(lecture.fileType)) return;
+    const token = localStorage.getItem("token");
+    const user = JSON.parse(localStorage.getItem("user") || "null");
+    if (!token || user?.role !== "student") return;
+    let lastSaved = lecture.resumeSeconds || 0;
+    const save = () => {
+      const seconds = Math.floor(positionRef.current);
+      if (seconds <= 0 || seconds === lastSaved) return;
+      lastSaved = seconds;
+      fetch(API_BASE_URL + "/api/lectures/" + lecture._id + "/position", {
+        method: "PUT", headers: { Authorization: "Bearer " + token, "Content-Type":"application/json" },
+        body: JSON.stringify({seconds}), keepalive: true
+      }).then(response => { if (!response.ok) lastSaved = -1; }).catch(() => { lastSaved = -1; });
+    };
+    const timer = setInterval(save, 5000);
+    window.addEventListener("pagehide", save);
+    return () => { clearInterval(timer); window.removeEventListener("pagehide", save); save(); };
+  }, [lecture]);
+
   const progress = duration > 0
     ? Math.min(100, Math.round((currentTime / duration) * 100))
     : 0;
+
+  const [isVideoPlaying, setIsVideoPlaying] = useState(false);
+  const [isTabActive, setIsTabActive] = useState(true);
+
+  const pauseForObservation = useCallback(reason => {
+    if (pausePlayingLecture(videoJsPlayerRef.current, youtubePlayerRef.current)) setPauseReason(reason);
+  }, []);
+
+  const engagement = useEngagementDetection({
+    onFocusPause: pauseForObservation,
+    lectureId: id,
+    isPlaying: isVideoPlaying && !pauseReason && !activeCheckpoint && isFullscreen,
+    isTabActive,
+    enabled: engagementEnabled,
+    mode: engagementMode,
+    lectureTimestamp: currentTime,
+  });
 
   const cleanupPlayers = useCallback(() => {
     if (videoJsPlayerRef.current) {
@@ -227,6 +283,12 @@ export default function LecturePage() {
       autoPlayPendingRef.current = false;
       setHasStarted(false);
       setShowQuiz(false);
+      setQuiz([]);
+      setRawQuizQuestions([]);
+      setQuizId(null);
+      setQuizSubmitted(false);
+      setQuizSubmission(null);
+      setQuizError("");
       setCurrentTime(0);
       setDuration(0);
       setCompletedCheckpoints(new Set());
@@ -265,11 +327,12 @@ export default function LecturePage() {
       try {
         const res = await api.get(`/quiz/${id}`);
         if (cancelled) return;
-        const qs = res.data?.questions || [];
+        const normalized = normalizeQuiz(res.data);
+        const qs = normalized.length > 0 ? normalized : (res.data?.questions || []);
         setRawQuizQuestions(qs);
         setQuizId(res.data?.quizId || null);
         if (qs.length > 0) {
-          setQuiz(normalizeQuiz(res.data));
+          setQuiz(qs);
         }
       } catch (err) {
         if (!cancelled) {
@@ -287,7 +350,14 @@ export default function LecturePage() {
 
   // Derive checkpoint timestamps when duration or questions are available
   useEffect(() => {
-    if (!rawQuizQuestions.length || duration <= 0) return;
+    if (!rawQuizQuestions.length) return;
+
+    const effectiveDuration =
+      duration > 0
+        ? duration
+        : videoJsPlayerRef.current?.duration?.() || 0;
+
+    if (effectiveDuration <= 0) return;
 
     const hasExplicit = rawQuizQuestions.some(
       (q) => typeof q.timestamp === "number" && q.timestamp > 0
@@ -296,7 +366,11 @@ export default function LecturePage() {
     let prepared = [];
     if (hasExplicit) {
       prepared = rawQuizQuestions
-        .map((q, originalIndex) => ({ ...q, originalIndex }))
+        .map((q, originalIndex) => ({
+          ...q,
+          originalIndex,
+          id: q.id || q._id || `checkpoint-${originalIndex}`,
+        }))
         .filter((q) => typeof q.timestamp === "number" && q.timestamp > 0);
     } else {
       // Create 2 in-video checkpoints at ~35% and ~70% of duration (or 1 at 50% if only 1 question)
@@ -306,8 +380,8 @@ export default function LecturePage() {
       prepared = ratios.map((ratio, idx) => ({
         ...rawQuizQuestions[idx],
         originalIndex: idx,
-        id: rawQuizQuestions[idx].id || `checkpoint-${idx}`,
-        timestamp: Math.round(duration * ratio),
+        id: rawQuizQuestions[idx].id || rawQuizQuestions[idx]._id || `checkpoint-${idx}`,
+        timestamp: Math.round(effectiveDuration * ratio),
       }));
     }
 
@@ -318,7 +392,6 @@ export default function LecturePage() {
   useEffect(() => {
     if (
       !hasStarted ||
-      !isFullscreen ||
       checkpoints.length === 0 ||
       activeCheckpoint
     ) {
@@ -326,9 +399,14 @@ export default function LecturePage() {
     }
 
     const candidate = checkpoints.find((cp) => {
-      const cpId = cp.id || cp.originalIndex;
-      if (completedCheckpoints.has(cpId)) return false;
-      return currentTime >= cp.timestamp && currentTime <= cp.timestamp + 3;
+      const keys = [
+        cp.id,
+        cp._id,
+        String(cp.originalIndex),
+        `checkpoint-${cp.originalIndex}`,
+      ].filter(Boolean);
+      if (keys.some((k) => completedCheckpoints.has(k))) return false;
+      return currentTime >= cp.timestamp && currentTime <= cp.timestamp + 4;
     });
 
     if (candidate) {
@@ -346,7 +424,6 @@ export default function LecturePage() {
   }, [
     currentTime,
     hasStarted,
-    isFullscreen,
     checkpoints,
     activeCheckpoint,
     completedCheckpoints,
@@ -379,6 +456,7 @@ export default function LecturePage() {
 
     player.on("loadedmetadata", () => {
       setDuration(player.duration() || 0);
+      if (lecture.resumeSeconds > 0) player.currentTime(lecture.resumeSeconds);
       if (autoPlayPendingRef.current) {
         autoPlayPendingRef.current = false;
         player.play();
@@ -388,6 +466,12 @@ export default function LecturePage() {
     player.on("timeupdate", () => {
       setCurrentTime(player.currentTime() || 0);
     });
+
+    player.on("playing", () => setIsVideoPlaying(true));
+    player.on("waiting", () => setIsVideoPlaying(false));
+    player.on("seeking", () => setIsVideoPlaying(false));
+    player.on("pause", () => setIsVideoPlaying(false));
+    player.on("ended", () => setIsVideoPlaying(false));
 
     player.on("ended", handleLectureCompleted);
 
@@ -425,6 +509,7 @@ export default function LecturePage() {
           rel: 0,
           playsinline: 1,
           enablejsapi: 1,
+          start: Math.floor(lecture.resumeSeconds || 0),
           fs: 0,
           autoplay: 0,
         },
@@ -442,6 +527,7 @@ export default function LecturePage() {
             }
           },
           onStateChange: (event) => {
+            setIsVideoPlaying(event.data === window.YT?.PlayerState?.PLAYING);
             if (event.data === window.YT?.PlayerState?.ENDED) {
               handleLectureCompleted();
             }
@@ -456,6 +542,7 @@ export default function LecturePage() {
               if (typeof player?.getDuration === "function") {
                 setDuration(player.getDuration() || 0);
               }
+              setIsVideoPlaying(event.data === window.YT?.PlayerState?.PLAYING);
             }
           },
           onError: () => {
@@ -662,6 +749,7 @@ export default function LecturePage() {
         );
       }
       wasHidden = isHidden;
+      setIsTabActive(!document.hidden);
     };
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
@@ -744,17 +832,27 @@ export default function LecturePage() {
   const handleContinueAfterCheckpoint = () => {
     if (!activeCheckpoint) return;
 
-    const cpId = activeCheckpoint.id || activeCheckpoint.originalIndex;
-    setCompletedCheckpoints((prev) => new Set([...prev, cpId]));
+    const cp = activeCheckpoint;
+    const keys = [
+      cp.id,
+      cp._id,
+      String(cp.originalIndex),
+      `checkpoint-${cp.originalIndex}`,
+    ].filter(Boolean);
+
+    setCompletedCheckpoints((prev) => new Set([...prev, ...keys]));
     setActiveCheckpoint(null);
     setCheckpointAnswer(null);
     setCheckpointResult(null);
 
-    // Resume video playback
+    // Advance playback by 2 seconds to cleanly move past the checkpoint window
+    const resumeTime = (cp.timestamp ?? currentTime) + 2;
     if (videoJsPlayerRef.current) {
+      videoJsPlayerRef.current.currentTime(resumeTime);
       videoJsPlayerRef.current.play();
-    } else if (youtubePlayerRef.current?.playVideo) {
-      youtubePlayerRef.current.playVideo();
+    } else if (youtubePlayerRef.current?.seekTo) {
+      youtubePlayerRef.current.seekTo(resumeTime, true);
+      youtubePlayerRef.current.playVideo?.();
     }
   };
 
@@ -845,6 +943,7 @@ export default function LecturePage() {
     generateQuiz();
   }, [showQuiz, quiz.length, quizLoading, quizError, generateQuiz]);
 
+  const attemptKey = useRef(null);
   const submitQuiz = async () => {
     if (!quiz.length || quizSubmitted || quizLoading) return;
 
@@ -866,7 +965,9 @@ export default function LecturePage() {
     setQuizError("");
 
     try {
+      attemptKey.current ||= globalThis.crypto?.randomUUID?.() || String(Date.now());
       const response = await api.post("/quiz/submit", {
+        attemptKey: attemptKey.current,
         quizId,
         lectureId: id,
         answers: quiz.map((item) => quizAnswers[item.id]),
@@ -879,12 +980,14 @@ export default function LecturePage() {
       setQuiz((previous) =>
         previous.map((item, index) => ({
           ...item,
+          explanation: response.data.explanations?.[index] || "",
           correctAnswerIndex: Number.isInteger(correctAnswers[index])
             ? correctAnswers[index]
             : null,
         }))
       );
 
+      attemptKey.current = null;
       setQuizSubmission({
         score: response.data.score,
         correct: response.data.correct,
@@ -902,11 +1005,80 @@ export default function LecturePage() {
 
   const quizScore = quizSubmission?.correct ?? 0;
 
+  const handleAcceptEngagement = useCallback(() => {
+    setShowPrivacyModal(false);
+    setEngagementMode("camera");
+    setEngagementEnabled(true);
+    engagement.requestCamera();
+  }, [engagement]);
+
+  const handleBehavioralEngagement = useCallback(() => {
+    setShowPrivacyModal(false);
+    setEngagementMode("behavioral");
+    setEngagementEnabled(true);
+  }, []);
+
+  const handleDeclineEngagement = useCallback(() => {
+    setShowPrivacyModal(false);
+  }, []);
+
+  const handleToggleEngagement = useCallback(() => {
+    if (engagementEnabled) {
+      setEngagementEnabled(false);
+      engagement.stopCamera();
+    } else {
+      setShowPrivacyModal(true);
+    }
+  }, [engagementEnabled, engagement]);
+
+  function handleAbsenceResume(disableTracking = false) {
+    setPauseReason(null);
+    if (disableTracking) {
+      setEngagementEnabled(false);
+      engagement.stopCamera();
+    }
+    if (document.hidden || !checkIsFullscreen() || activeCheckpoint) return;
+    if (videoJsPlayerRef.current) {
+      videoJsPlayerRef.current.play()?.catch(() => setFocusNotice("Press Play to continue."));
+    } else youtubePlayerRef.current?.playVideo?.();
+  }
+
+  const togglePlayPause = useCallback(() => {
+    if (videoJsPlayerRef.current) {
+      if (videoJsPlayerRef.current.paused()) {
+        videoJsPlayerRef.current.play();
+      } else {
+        videoJsPlayerRef.current.pause();
+      }
+      return;
+    }
+
+    if (youtubePlayerRef.current) {
+      try {
+        const state =
+          typeof youtubePlayerRef.current.getPlayerState === "function"
+            ? youtubePlayerRef.current.getPlayerState()
+            : null;
+        if (state === window.YT?.PlayerState?.PLAYING) {
+          youtubePlayerRef.current.pauseVideo();
+        } else {
+          youtubePlayerRef.current.playVideo();
+        }
+      } catch {
+        if (isVideoPlaying) {
+          youtubePlayerRef.current?.pauseVideo?.();
+        } else {
+          youtubePlayerRef.current?.playVideo?.();
+        }
+      }
+    }
+  }, [isVideoPlaying]);
+
   if (!router.isReady || lectureLoading) {
     return (
-      <main className="min-h-screen bg-slate-950 text-white grid place-items-center p-6">
+      <main className="lecture-studio min-h-screen bg-slate-950 text-white grid place-items-center p-6">
         <div className="text-center">
-          <div className="mx-auto mb-4 h-9 w-9 animate-spin rounded-full border-4 border-cyan-400/20 border-t-cyan-400" />
+          <div className="mx-auto mb-4 h-9 w-9 animate-spin rounded-full border-4 border-indigo-400/20 border-t-cyan-400" />
           <p className="text-white/70">Loading lecture...</p>
         </div>
       </main>
@@ -915,7 +1087,7 @@ export default function LecturePage() {
 
   if (lectureError && !lecture) {
     return (
-      <main className="min-h-screen bg-slate-950 text-white grid place-items-center p-6">
+      <main className="lecture-studio min-h-screen bg-slate-950 text-white grid place-items-center p-6">
         <div className="max-w-lg rounded-2xl border border-red-400/30 bg-red-500/10 p-6 text-center">
           <h1 className="text-xl font-semibold text-red-300">
             Unable to load lecture
@@ -938,20 +1110,55 @@ export default function LecturePage() {
   const transcriptUnavailable = transcriptStatus === "unavailable";
 
   return (
-    <main className="min-h-screen bg-slate-950 p-4 text-white sm:p-6">
+    <main className="lecture-studio min-h-screen bg-slate-950 p-4 text-white sm:p-6">
+      {showPrivacyModal && (
+        <PrivacyConsentModal
+          onAccept={handleAcceptEngagement}
+          onBehavioral={handleBehavioralEngagement}
+          onDecline={handleDeclineEngagement}
+        />
+      )}
+      {pauseReason && <AbsencePauseOverlay reason={pauseReason} onResume={handleAbsenceResume} />}
       <div className="mx-auto grid max-w-7xl grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.5fr)_minmax(320px,0.8fr)]">
         <section className="min-w-0 space-y-5">
-          <header>
-            <p className="text-xs font-medium uppercase tracking-[0.2em] text-cyan-300">
-              Learning space
-            </p>
-            <h1 className="mt-2 text-2xl font-bold sm:text-3xl">
-              {lecture.title || "Untitled lecture"}
-            </h1>
-            {lecture.description && (
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-white/60">
-                {lecture.description}
+          <header className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-[0.2em] text-indigo-300">
+                Learning space
               </p>
+              <h1 className="mt-2 text-2xl font-bold sm:text-3xl">
+                {lecture.title || "Untitled lecture"}
+              </h1>
+              {lecture.description && (
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-white/60">
+                  {lecture.description}
+                </p>
+              )}
+            </div>
+            {hasStarted && (
+              <div className="flex shrink-0 flex-col items-start gap-2 pt-1 sm:items-end">
+                <EngagementStatusBadge
+                  score={engagement.score}
+                  confidence={engagement.confidence}
+                  category={engagement.category}
+                  enabled={engagementEnabled}
+                  mode={engagementMode}
+                  modelStatus={engagement.modelStatus}
+                  cameraActive={engagement.cameraActive}
+                  cameraError={engagement.cameraError}
+                  onToggle={handleToggleEngagement}
+                />
+                {engagementEnabled && engagementMode === "camera" && (
+                  <figure className="w-40 overflow-hidden rounded-lg border border-white/30 bg-slate-950">
+                    <video ref={engagement.previewRef} aria-label="Your live camera preview" autoPlay muted playsInline
+                      className="aspect-video w-full -scale-x-100 object-cover" />
+                    <figcaption className="px-2 py-1 text-xs text-white">
+                      {engagement.cameraError || (engagement.modelStatus === "loading" ? "Starting camera…" :
+                        !isVideoPlaying ? "Playback paused" : engagement.cameraMessage || "Your camera")}
+                    </figcaption>
+                  </figure>
+                )}
+              </div>
             )}
           </header>
 
@@ -972,34 +1179,48 @@ export default function LecturePage() {
 
           {/* Full-Screen Mode Active Indicator */}
           {hasStarted && isFullscreen && (
-            <div className="flex items-center justify-between rounded-xl border border-cyan-400/20 bg-cyan-950/40 px-4 py-2.5 text-xs text-cyan-200">
+            <div className="flex items-center justify-between rounded-xl border border-indigo-400/20 bg-indigo-950/40 px-4 py-2.5 text-xs text-indigo-200">
               <div className="flex items-center gap-2">
-                <span className="flex h-2 w-2 rounded-full bg-cyan-400 animate-pulse" />
+                <span className={`flex h-2 w-2 rounded-full ${isVideoPlaying ? "bg-indigo-400 animate-pulse" : "bg-amber-400"}`} />
                 <span className="font-medium">Full-Screen Learning Active</span>
                 <span className="text-white/40">·</span>
-                <span className="text-white/60">Playback unlocked</span>
+                <span className="text-white/60">{isVideoPlaying ? "Playing" : "Paused"}</span>
               </div>
-              <button
-                type="button"
-                onClick={exitFullscreen}
-                className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-white/70 hover:bg-white/10 hover:text-white transition"
-                title="Pause and exit full screen"
-              >
-                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-                Pause & Exit Full Screen
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={togglePlayPause}
+                  className="flex items-center gap-1.5 rounded-lg border border-indigo-400/30 bg-indigo-500/20 px-3 py-1.5 text-xs font-semibold text-indigo-200 hover:bg-indigo-500/30 transition active:scale-95 cursor-pointer"
+                >
+                  {isVideoPlaying ? "⏸ Pause" : "▶ Play"}
+                </button>
+                <button
+                  type="button"
+                  onClick={exitFullscreen}
+                  className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs text-white/70 hover:bg-white/10 hover:text-white transition cursor-pointer"
+                  title="Pause and exit full screen"
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                  Exit Full Screen
+                </button>
+              </div>
             </div>
           )}
 
-          <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-black min-h-[340px] flex items-center justify-center">
+          <div className="relative overflow-hidden rounded-xl border border-slate-700 bg-black min-h-[340px] flex items-center justify-center">
+            {lecture.fileType === "reading" && (
+              <article aria-label="Lecture reading" className="w-full whitespace-pre-wrap p-8 leading-8">{lecture.transcript}</article>
+            )}
             {lecture.fileType === "video" && (
-              <video
-                ref={videoElementRef}
-                className="video-js vjs-big-play-centered w-full"
-                playsInline
-              />
+              <div data-vjs-player className="w-full">
+                <video
+                  ref={videoElementRef}
+                  className="video-js vjs-big-play-centered w-full"
+                  playsInline
+                />
+              </div>
             )}
 
             {lecture.fileType === "youtube" && lecture.youtubeVideoId && (
@@ -1033,14 +1254,14 @@ export default function LecturePage() {
             )}
 
             {/* GATE 1: Full-screen mandatory to start lecture */}
-            {!hasStarted && (
+            {!hasStarted && ["video","youtube"].includes(lecture.fileType) && (
               <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/90 p-6 text-center backdrop-blur-md">
-                <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl border border-cyan-400/30 bg-cyan-500/10 text-cyan-300 shadow-inner shadow-cyan-500/20">
+                <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl border border-indigo-400/30 bg-indigo-500/10 text-indigo-300 shadow-inner shadow-cyan-500/20">
                   <svg className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
                   </svg>
                 </div>
-                <span className="rounded-full border border-cyan-400/30 bg-cyan-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-cyan-300">
+                <span className="rounded-full border border-indigo-400/30 bg-indigo-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-indigo-300">
                   Mandatory Full Screen
                 </span>
                 <h3 className="mt-3 text-xl font-bold text-white sm:text-2xl">
@@ -1105,7 +1326,7 @@ export default function LecturePage() {
             {/* GATE 3: In-Video Checkpoint Quiz Modal */}
             {activeCheckpoint && (
               <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-black/95 p-4 sm:p-6 text-white backdrop-blur-md overflow-y-auto">
-                <div className="w-full max-w-xl rounded-2xl border border-cyan-400/30 bg-slate-900/95 p-5 sm:p-6 shadow-2xl shadow-cyan-950/60">
+                <div className="w-full max-w-xl rounded-2xl border border-indigo-400/30 bg-slate-900/95 p-5 sm:p-6 shadow-2xl shadow-cyan-950/60">
                   {/* Header */}
                   <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-4">
                     <div className="flex items-center gap-2.5">
@@ -1119,7 +1340,7 @@ export default function LecturePage() {
                         </p>
                       </div>
                     </div>
-                    <span className="rounded-full border border-cyan-400/30 bg-cyan-400/10 px-2.5 py-1 text-xs font-mono font-medium text-cyan-300">
+                    <span className="rounded-full border border-indigo-400/30 bg-indigo-400/10 px-2.5 py-1 text-xs font-mono font-medium text-indigo-300">
                       {formatTime(activeCheckpoint.timestamp)}
                     </span>
                   </div>
@@ -1144,7 +1365,7 @@ export default function LecturePage() {
                           optionStyle = "border-white/5 bg-white/[0.02] text-white/40";
                         }
                       } else if (isSelected) {
-                        optionStyle = "border-cyan-400 bg-cyan-500/20 text-cyan-200 font-medium";
+                        optionStyle = "border-indigo-400 bg-indigo-500/20 text-indigo-200 font-medium";
                       }
 
                       return (
@@ -1156,7 +1377,7 @@ export default function LecturePage() {
                           className={`flex w-full items-center gap-3 rounded-xl border p-3.5 text-left text-xs sm:text-sm transition ${optionStyle}`}
                         >
                           <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
-                            isSelected ? "bg-cyan-400 text-slate-950" : "bg-white/10 text-white/60"
+                            isSelected ? "bg-indigo-400 text-slate-950" : "bg-white/10 text-white/60"
                           }`}>
                             {String.fromCharCode(65 + optIdx)}
                           </span>
@@ -1228,7 +1449,7 @@ export default function LecturePage() {
           )}
 
           {duration > 0 && (
-            <section className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+            <section className="rounded-xl border border-white/10 bg-[#192338] p-4">
               <div className="mb-2 flex justify-between text-xs text-white/60">
                 <span className="flex items-center gap-1.5">
                   <span>Lecture progress</span>
@@ -1252,7 +1473,7 @@ export default function LecturePage() {
                   aria-label="Lecture playback progress"
                 >
                   <div
-                    className="h-full rounded-full bg-cyan-400 transition-all"
+                    className="h-full rounded-full bg-indigo-400 transition-all"
                     style={{ width: `${progress}%` }}
                   />
                 </div>
@@ -1287,7 +1508,7 @@ export default function LecturePage() {
             </section>
           )}
 
-          <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+          <section className="rounded-xl border border-slate-700 bg-[#192338] p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-lg font-semibold">Lecture summary</h2>
               <button
@@ -1327,7 +1548,7 @@ export default function LecturePage() {
                   {lecture.topics.map((topic, index) => (
                     <span
                       key={`${index}-${topic}`}
-                      className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-xs text-cyan-200"
+                      className="rounded-full border border-indigo-300/20 bg-indigo-200/10 px-3 py-1 text-xs text-indigo-200"
                     >
                       {topic}
                     </span>
@@ -1337,19 +1558,19 @@ export default function LecturePage() {
             )}
           </section>
 
-          <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+          <section className="rounded-xl border border-slate-700 bg-[#192338] p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="text-lg font-semibold">Lecture assessment</h2>
                 <p className="mt-1 text-sm text-white/50">
-                  Load the quiz generated during lecture processing.
+                  Score at least 70% on this assessment to complete the lecture.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={generateQuiz}
                 disabled={quizLoading}
-                className="rounded-lg bg-cyan-300 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-lg bg-indigo-200 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {quizLoading ? "Loading..." : "Load quiz"}
               </button>
@@ -1358,7 +1579,7 @@ export default function LecturePage() {
             {showQuiz && (
               <div className="mt-5 space-y-5">
                 {quizLoading && (
-                  <p className="text-sm text-cyan-200">
+                  <p className="text-sm text-indigo-200">
                     Loading saved lecture questions...
                   </p>
                 )}
@@ -1386,10 +1607,10 @@ export default function LecturePage() {
                           item.correctAnswerIndex === optionIndex;
 
                         let optionClass =
-                          "border-white/10 bg-white/[0.03] hover:bg-white/[0.07]";
+                          "border-white/10 bg-[#192338] hover:bg-white/[0.07]";
                         if (selected) {
                           optionClass =
-                            "border-cyan-300/60 bg-cyan-300/10";
+                            "border-indigo-300/60 bg-indigo-200/10";
                         }
                         if (quizSubmitted && isCorrect) {
                           optionClass =
@@ -1450,8 +1671,9 @@ export default function LecturePage() {
                 {quizSubmitted && (
                   <div className="rounded-xl border border-emerald-400/30 bg-emerald-400/10 p-4">
                     <p className="font-semibold text-emerald-200">
-                      Practice quiz completed
+                      Assessment saved
                     </p>
+                    <Link className="underline text-indigo-200" href="/student/dashboard">View progress and revision topics</Link>
                     {quizSubmission && (
                       <p className="mt-1 text-sm text-white/75">
                         Score: {quizScore} / {quizSubmission.total} (
@@ -1466,7 +1688,7 @@ export default function LecturePage() {
         </section>
 
         <aside className="min-w-0 space-y-5">
-          <section className="flex h-[560px] min-h-[420px] flex-col overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
+          <section className="flex h-[560px] min-h-[420px] flex-col overflow-hidden rounded-xl border border-slate-700 bg-[#192338]">
             <div className="border-b border-white/10 p-4">
               <h2 className="font-semibold">Lecture transcript</h2>
               <p className="mt-1 text-xs text-white/45">
@@ -1478,7 +1700,7 @@ export default function LecturePage() {
                 onChange={(event) => setTranscriptSearch(event.target.value)}
                 placeholder="Search transcript..."
                 aria-label="Search transcript"
-                className="mt-3 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none placeholder:text-white/35 focus:border-cyan-300/50"
+                className="mt-3 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none placeholder:text-white/35 focus:border-indigo-300/50"
               />
             </div>
 
@@ -1515,7 +1737,7 @@ export default function LecturePage() {
                   }}
                   className={`rounded-lg p-3 text-sm leading-6 ${
                     activeTranscriptId === segment.id
-                      ? "bg-cyan-300/10 text-cyan-100"
+                      ? "bg-indigo-200/10 text-cyan-100"
                       : "text-white/70"
                   }`}
                 >
@@ -1523,7 +1745,7 @@ export default function LecturePage() {
                     <button
                       type="button"
                       onClick={() => seekTo(segment.start)}
-                      className="mb-1 mr-2 rounded bg-white/10 px-2 py-0.5 text-xs text-cyan-200 hover:bg-white/20"
+                      className="mb-1 mr-2 rounded bg-white/10 px-2 py-0.5 text-xs text-indigo-200 hover:bg-white/20"
                       title={`Jump to ${formatTime(segment.start)}`}
                     >
                       {formatTime(segment.start)}
@@ -1535,9 +1757,9 @@ export default function LecturePage() {
             </div>
           </section>
 
-          <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+          <section className="rounded-xl border border-slate-700 bg-[#192338] p-5">
             <div className="mb-4">
-              <h2 className="font-semibold">AI lecture assistant</h2>
+              <h2 className="font-semibold">Search lecture passages</h2>
               <p className="mt-1 text-sm text-white/50">
                 Ask questions about the content of this lecture.
               </p>
@@ -1554,7 +1776,7 @@ export default function LecturePage() {
                 placeholder="Ask something about this lecture..."
                 rows={3}
                 maxLength={2000}
-                className="w-full resize-y rounded-xl border border-white/10 bg-black/30 p-3 text-sm outline-none placeholder:text-white/35 focus:border-cyan-300/50"
+                className="w-full resize-y rounded-xl border border-white/10 bg-black/30 p-3 text-sm outline-none placeholder:text-white/35 focus:border-indigo-300/50"
               />
               <div className="mt-2 flex items-center justify-between gap-3">
                 <span className="text-xs text-white/35">
@@ -1563,16 +1785,16 @@ export default function LecturePage() {
                 <button
                   type="submit"
                   disabled={!question.trim() || chatLoading}
-                  className="rounded-lg bg-cyan-300 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="rounded-lg bg-indigo-200 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {chatLoading ? "Thinking..." : "Ask AI"}
+                  {chatLoading ? "Searching..." : "Find passage"}
                 </button>
               </div>
             </form>
 
             {chatLoading && (
-              <p className="mt-4 text-sm text-cyan-200" role="status">
-                Searching lecture context and generating an answer...
+              <p className="mt-4 text-sm text-indigo-200" role="status">
+                Finding matching passages…
               </p>
             )}
 
@@ -1584,7 +1806,7 @@ export default function LecturePage() {
 
             {answer && (
               <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-4">
-                <h3 className="mb-2 text-sm font-semibold text-cyan-200">
+                <h3 className="mb-2 text-sm font-semibold text-indigo-200">
                   Answer
                 </h3>
                 <p className="whitespace-pre-wrap text-sm leading-6 text-white/80">

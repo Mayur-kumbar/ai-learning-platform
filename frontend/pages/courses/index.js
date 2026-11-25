@@ -1,5 +1,7 @@
 "use client";
 
+import Brand from "@/components/Brand";
+
 import api from "@/lib/api";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -27,10 +29,11 @@ export default function CoursesPage() {
   );
 
   return (
-    <div className="min-h-screen bg-black text-white p-8">
+    <div className="course-page">
+      <header className="course-brand"><Brand /></header>
 
       {/* HEADER */}
-      <div className="flex justify-between items-center mb-6">
+      <div className="course-page-heading">
         <h1 className="text-3xl font-bold">Explore Courses</h1>
 
         <input
@@ -38,7 +41,7 @@ export default function CoursesPage() {
           placeholder="Search courses..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="px-4 py-2 rounded-xl bg-white/10 border border-white/20 focus:outline-none focus:border-yellow-400"
+          className="px-4 py-2 rounded-xl bg-slate-800 border border-slate-600 focus:outline-none focus:border-blue-400"
         />
       </div>
 
@@ -48,15 +51,15 @@ export default function CoursesPage() {
           filteredCourses.map((course) => (
             <div
               key={course._id}
-              className="p-5 bg-white/10 rounded-2xl cursor-pointer hover:scale-105 transition"
+              className="course-tile"
               onClick={() => router.push(`/courses/${course._id}`)} // ✅ redirect on card click
             >
               <h2 className="text-xl font-semibold">{course.title}</h2>
 
-              <p className="text-sm text-gray-400 mt-1">
+              <p className="text-sm text-slate-300 mt-1">
                 {course.description || "No description available"} 
               </p>
-              {/* <p className="text-sm text-gray-400 mt-1">
+              {/* <p className="text-sm text-slate-300 mt-1">
                 {course.lectures} lectures
               </p> */}
 
@@ -65,14 +68,14 @@ export default function CoursesPage() {
                   e.stopPropagation(); // ❗ prevent card click
                   router.push(`/courses/${course._id}`);
                 }}
-                className="mt-4 w-full bg-yellow-400 text-black py-2 rounded-xl font-semibold"
+                className="mt-4 w-full bg-blue-700 text-white py-2 rounded-xl font-semibold"
               >
                 View Course
               </button>
             </div>
           ))
         ) : (
-          <p className="text-gray-400">No courses found</p>
+          <p className="text-slate-300">No courses found</p>
         )}
       </div>
     </div>

@@ -17,6 +17,7 @@ QUIZ_SCHEMA = {
                     "items": {
                         "type": "object",
                         "properties": {
+                            "topic": {"type": "string"},
                             "question": {
                                 "type": "string"
                             },
@@ -34,6 +35,7 @@ QUIZ_SCHEMA = {
                             }
                         },
                         "required": [
+                            "topic",
                             "question",
                             "options",
                             "correctIndex",
@@ -107,6 +109,7 @@ def validate_questions(data):
             raise ValueError(f"{label} has no explanation.")
 
         validated.append({
+            "topic": str(question.get("topic") or "").strip(),
             "question": question_text.strip(),
             "options": [option.strip() for option in options],
             "correctIndex": correct_index,
@@ -149,7 +152,7 @@ STRICT REQUIREMENTS:
 6. Provide a clear explanation for each correct answer.
 7. Avoid duplicate questions.
 8. Do not introduce facts absent from the lecture.
-9. Do not generate timestamps.
+9. Set topic to the matching key topic; use an empty string when none applies. Do not generate timestamps.
 10. Do not include additional properties.
 
 Generate questions covering different concepts from the lecture.
@@ -178,6 +181,9 @@ Return the JSON object matching the supplied schema.
             data = json.loads(raw)
 
             questions = validate_questions(data)
+            for item in questions:
+                if item["topic"] not in (topics or []):
+                    item["topic"] = ""
 
             print(
                 f"[quiz] Successfully generated "

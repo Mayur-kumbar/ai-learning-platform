@@ -8,7 +8,7 @@ export default function Dashboard() {
   const router = useRouter();
 
   useEffect(() => {
-    console.log("User role:", user.role); // Debugging line
+    if (!user) return;
     const role = user.role || "student"; // Default to student if role is missing
 
     if (role === "instructor") {
