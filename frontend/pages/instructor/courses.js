@@ -1,3 +1,4 @@
+import Brand from "@/components/Brand";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { Home, Book, Bot, BarChart, Settings } from "lucide-react";
@@ -7,6 +8,7 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 
 export default function InstructorCourses() {
   const [courses, setCourses] = useState([]);
+  const [error, setError] = useState("");
   const [newCourse, setNewCourse] = useState("");
   const [courseDesc, setCourseDesc] = useState("");
   const [activeCourse, setActiveCourse] = useState(null);
@@ -33,14 +35,16 @@ export default function InstructorCourses() {
   const handleCreateCourse = async () => {
     if (!newCourse.trim()) return;
     try {
-      await api.post("/courses/create", {
+      const response = await api.post("/courses/create", {
         title: newCourse,
         description: courseDesc,
       });
+      setCourses(previous => [response.data.course, ...previous]);
+      router.push(`/instructor/courses/${response.data.course._id}`);
       setNewCourse("");
       setCourseDesc("");
     } catch (err) {
-      console.error("Create course failed", err);
+      setError(err.message);
     }
   };
 
@@ -112,11 +116,11 @@ export default function InstructorCourses() {
 
   return (
     <ProtectedRoute>
-      <div className="flex min-h-screen bg-gradient-to-br from-[#020617] via-black to-black text-white">
+      <div className="workspace-shell">
         {/* SIDEBAR */}
-        <div className="w-64 p-6 border-r border-white/10">
-          <h1 className="text-2xl font-bold text-yellow-400 mb-10">
-            LearnX AI
+        <div className="workspace-nav">
+          <h1 className="workspace-wordmark">
+            <Brand />
           </h1>
           <SidebarItem
             icon={<Home />}
@@ -130,61 +134,54 @@ export default function InstructorCourses() {
         </div>
 
         {/* MAIN */}
-        <div className="flex-1 p-10 space-y-8">
+        <div className="workspace-main space-y-8">
           {/* HEADER */}
           <div>
             <h1 className="text-3xl font-bold mb-2">Manage Courses</h1>
-            <p className="text-white/60">Create and organize your content</p>
+            <p className="text-slate-300">Create and organize your content</p>
           </div>
 
           {/* CREATE COURSE */}
-          <div className="p-6 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-xl">
+          <div className="surface-card">
             <input
               value={newCourse}
               onChange={(e) => setNewCourse(e.target.value)}
               placeholder="Course title"
-              className="w-full p-3 rounded bg-black border border-white/20"
+              className="w-full p-3 rounded bg-slate-800 border border-slate-600"
             />
             <textarea
               value={courseDesc}
               onChange={(e) => setCourseDesc(e.target.value)}
               placeholder="Course description"
-              className="w-full mt-3 p-3 rounded bg-black border border-white/20"
+              className="w-full mt-3 p-3 rounded bg-slate-800 border border-slate-600"
             />
             <button
               onClick={handleCreateCourse}
-              className="mt-4 bg-gradient-to-r from-yellow-400 to-amber-500 text-black px-6 py-2 rounded-xl font-semibold hover:scale-105 transition"
+              className="mt-4 bg-blue-700 text-white px-6 py-2 rounded-xl font-semibold hover:-translate-y-0.5 transition"
             >
               Create Course
             </button>
           </div>
 
+          {error && <p role="alert">{error}</p>}
           {/* COURSES */}
           <div className="space-y-4">
             {console.log(courses)}
             {courses.map((course) => (
               <motion.div
                 key={course._id}
-                className="p-5 rounded-2xl bg-white/5 border border-white/10 cursor-pointer hover:scale-105 transition"
+                className="surface-card cursor-pointer hover:-translate-y-0.5 transition"
                 onClick={() => router.push(`/instructor/courses/${course._id}`)}
               >
                 <div className="flex justify-between">
                   <div>
                     <h2>{course.title}</h2>
-                    <p className="text-sm text-gray-400">
+                    <p className="text-sm text-slate-300">
                       {course.description}
                     </p>
                   </div>
 
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteCourse(course._id);
-                    }}
-                    className="text-red-400"
-                  >
-                    Delete
-                  </button>
+                  <span>{course.published ? "Published" : "Draft"}</span>
                 </div>
               </motion.div>
             ))}
@@ -199,7 +196,7 @@ function SidebarItem({ icon, text, active, onClick }) {
   return (
     <div
       onClick={onClick}
-      className={`flex gap-3 p-3 cursor-pointer ${active ? "text-yellow-400" : "text-white/60 hover:text-white"}`}
+      className={`workspace-nav-item ${active ? "is-active" : ""}`}
     >
       {icon} {text}
     </div>

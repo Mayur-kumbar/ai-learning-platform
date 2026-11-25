@@ -1,3 +1,4 @@
+import Brand from "@/components/Brand";
 // pages/register.js
 
 import { useState } from 'react';
@@ -143,8 +144,7 @@ function RegisterPanel() {
     <div className="panel-content">
       
       <div className="panel-brand">
-        <span className="brand-mark">⬡</span>
-        <span className="brand-name">Cognify</span>
+        <Brand />
       </div>
 
       <div className="panel-copy">

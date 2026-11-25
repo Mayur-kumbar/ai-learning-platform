@@ -20,6 +20,7 @@ const questionSchema = new mongoose.Schema({
     max: 3,
     validate: Number.isInteger,
   },
+  topic: { type: String, default: '', trim: true },
   timestamp: { type: Number, default: null, min: 0 },
   explanation: { type: String, default: '' },
 });
