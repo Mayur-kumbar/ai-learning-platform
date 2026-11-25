@@ -1,3 +1,4 @@
+import Brand from "@/components/Brand";
 import { useEffect } from "react";
 
 
@@ -35,8 +36,7 @@ function RegisterPanel() {
 
       {/* BRAND */}
       <div className="panel-brand">
-        <span className="brand-mark">⬡</span>
-        <span className="brand-name">Cognify</span>
+        <Brand />
       </div>
 
       {/* TEXT */}

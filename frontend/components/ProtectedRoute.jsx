@@ -1,22 +1,15 @@
-import { useEffect, useState } from "react";
-import { useRouter } from "next/router";
-import { useAuth } from "../context/AuthContext";
+import { useEffect } from 'react';
+import { useRouter } from 'next/router';
+import { useAuth } from '../context/AuthContext';
 
-export default function ProtectedRoute({ children }) {
-  const { isAuthenticated } = useAuth();
+export default function ProtectedRoute({ children, role }) {
+  const { user, ready } = useAuth();
   const router = useRouter();
-  const [isReady, setIsReady] = useState(false);
-
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!token && !isAuthenticated) {
-      router.push("/login");
-    } else {
-      setIsReady(true);
-    }
-  }, [isAuthenticated, router]);
-
-  if (!isReady) return null;
-
+    if (!ready) return;
+    if (!user) router.replace('/login');
+    else if (role && user.role !== role) router.replace('/dashboard');
+  }, [ready, user, role, router]);
+  if (!ready || !user || (role && user.role !== role)) return null;
   return children;
 }

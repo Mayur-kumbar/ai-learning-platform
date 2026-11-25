@@ -1,4 +1,7 @@
 import axios from 'axios';
+import { accessibleCourses } from '../middlewares/courseAccess.js';
+import jwt from 'jsonwebtoken';
+import PlaybackPosition from '../models/PlaybackPosition.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import Lecture from '../models/Lecture.js';
@@ -57,17 +60,18 @@ export const uploadLecture = async (req, res) => {
       quizStatus: 'pending',
     });
 
-    course.lectures.push(lecture._id);
-    await course.save();
+    await Course.updateOne({ _id: course._id }, { $addToSet: { lectures: lecture._id } });
 
     // fire and forget — do not await
-    const filePath = path.join(__dirname, '..', 'uploads', req.file.filename);
+    const filePath = path.resolve(req.file.path);
+    const callbackToken = jwt.sign({ lecture: String(lecture._id) }, process.env.JWT_SECRET, { audience: 'processing-callback', expiresIn: '24h' });
     axios.post(`${process.env.PYTHON_SERVICE_URL}/process-lecture`, {
+      callbackToken,
       lectureId: lecture._id.toString(),
       filePath,
       fileType,
-    }).catch((err) => {
-      console.error('Python service error:', err.message);
+    }, { timeout: 10000 }).catch(async () => {
+      await Lecture.updateOne({ _id: lecture._id, status: 'processing' }, { status: 'failed', transcriptStatus: 'failed', quizStatus: 'failed', transcriptError: 'Processing service unavailable.' }).catch(() => console.error('Could not save dispatch failure'));
     });
 
     return res.status(201).json({
@@ -82,7 +86,8 @@ export const uploadLecture = async (req, res) => {
 
 export const getLectures = async (req, res) => {
   try {
-    const lectures = await Lecture.find()
+    const allowed = await Course.distinct('lectures', accessibleCourses(req.user));
+    const lectures = await Lecture.find({ _id: { $in: allowed } })
       .populate('instructorId', 'name email')
       .sort({ createdAt: -1 });
 
@@ -101,7 +106,14 @@ export const getLectureById = async (req, res) => {
       return res.status(404).json({ error: 'Lecture not found' });
     }
 
-    return res.status(200).json({ lecture });
+    const data = lecture.toObject();
+    const position = await PlaybackPosition.findOne({studentId:req.user._id, lectureId:lecture._id}).lean();
+    data.resumeSeconds = position?.seconds || 0;
+    if (data.fileUrl?.startsWith('/uploads/')) {
+      const ticket = jwt.sign({ sub: String(req.user._id), lecture: String(lecture._id) }, process.env.JWT_SECRET, { audience: 'lecture-media', expiresIn: '2h' });
+      data.fileUrl = '/api/lectures/' + lecture._id + '/media?ticket=' + encodeURIComponent(ticket);
+    }
+    return res.status(200).json({ lecture: data });
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }
@@ -123,6 +135,7 @@ export const lectureCallback = async (req, res) => {
 
     const update = {};
     if (status) update.status = status;
+    if (req.body.indexStatus) update.indexStatus = req.body.indexStatus;
     if (typeof transcript === 'string') {
       update.transcript = transcript;
       update.transcriptStatus = transcriptStatus || 'completed';
@@ -135,36 +148,18 @@ export const lectureCallback = async (req, res) => {
     if (quizStatus) update.quizStatus = quizStatus;
     if (typeof quizError === 'string') update.quizError = quizError;
 
-    const lecture = await Lecture.findByIdAndUpdate(
-      req.params.id,
-      { $set: update },
-      { new: true, runValidators: true }
-    );
-
-    if (!lecture) {
-      return res.status(404).json({ error: 'Lecture not found' });
-    }
-
+    if (!await Lecture.exists({_id:req.params.id})) return res.status(404).json({ error: 'Lecture not found' });
     if (Array.isArray(quizQuestions) && quizQuestions.length > 0) {
-      await Quiz.findOneAndUpdate(
-        { lectureId: lecture._id },
-        { $set: { questions: quizQuestions } },
-        {
-          upsert: true,
-          new: true,
-          runValidators: true,
-          setDefaultsOnInsert: true,
-        }
-      );
-
-      lecture.quizStatus = 'completed';
-      lecture.quizError = '';
-      await lecture.save();
+      await Quiz.findOneAndUpdate({ lectureId: req.params.id }, { $set: { questions: quizQuestions } },
+        { upsert: true, runValidators: true, setDefaultsOnInsert: true });
+      update.quizStatus = 'completed';
+      update.quizError = '';
     } else if (quizStatus === 'completed') {
-      lecture.quizStatus = 'failed';
-      lecture.quizError = 'Quiz generation reported success but returned no questions.';
-      await lecture.save();
+      update.quizStatus = 'failed';
+      update.status = 'partial';
+      update.quizError = 'Quiz generation returned no questions.';
     }
+    const lecture = await Lecture.findByIdAndUpdate(req.params.id, { $set: update }, { new: true, runValidators: true });
 
     return res.status(200).json({
       message: 'Lecture processing callback received',
@@ -214,17 +209,18 @@ export const addYoutubeLecture = async (req, res) => {
       quizStatus: 'pending',
     });
 
-    course.lectures.push(lecture._id);
-    await course.save();
+    await Course.updateOne({ _id: course._id }, { $addToSet: { lectures: lecture._id } });
 
     // Fire and forget — trigger Python AI service
+    const callbackToken = jwt.sign({ lecture: String(lecture._id) }, process.env.JWT_SECRET, { audience: 'processing-callback', expiresIn: '24h' });
     axios.post(`${process.env.PYTHON_SERVICE_URL}/process-lecture`, {
+      callbackToken,
       lectureId: lecture._id.toString(),
       filePath: '',
       fileType: 'youtube',
       youtubeVideoId: parsed.videoId,
-    }).catch((err) => {
-      console.error('Python service error:', err.message);
+    }, { timeout: 10000 }).catch(async () => {
+      await Lecture.updateOne({ _id: lecture._id, status: 'processing' }, { status: 'failed', transcriptStatus: 'failed', quizStatus: 'failed', transcriptError: 'Processing service unavailable.' }).catch(() => console.error('Could not save dispatch failure'));
     });
 
     return res.status(201).json({

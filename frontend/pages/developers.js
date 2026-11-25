@@ -1,3 +1,4 @@
+import Brand from "@/components/Brand";
 import { useRouter } from "next/router";
 
 export default function Developers() {
@@ -39,49 +40,45 @@ export default function Developers() {
   ];
 
   return (
-    <div className="min-h-screen bg-[#0b0c10] text-white">
+    <div className="public-page">
 
       {/* NAVBAR */}
-      <nav className="flex justify-between items-center px-10 py-6 backdrop-blur bg-[#0b0c10]/70 sticky top-0 z-50">
+      <nav className="public-nav">
         <h1
           onClick={() => router.push("/")}
           className="text-xl font-semibold cursor-pointer"
         >
-          ⬡ LearnX AI
+          <Brand />
         </h1>
 
         <button
           onClick={() => router.push("/")}
-          className="text-sm text-gray-300 hover:text-white transition"
+          className="btn-outline"
         >
           Home
         </button>
       </nav>
 
       {/* HEADER */}
-      <section className="text-center mt-20 px-6">
+      <section className="team-intro">
         <h1 className="text-4xl font-bold">
           Meet the Developers
         </h1>
-        <p className="mt-4 text-gray-400 max-w-xl mx-auto">
-          The team behind LearnX AI — building intelligent learning experiences.
+        <p className="mt-4 text-slate-300 max-w-xl mx-auto">
+          The team behind SmartLearn — building intelligent learning experiences.
         </p>
       </section>
 
       {/* DEV CARDS */}
-      <section className="mt-16 px-10 grid sm:grid-cols-2 md:grid-cols-4 gap-8">
+      <section className="team-grid">
 
         {devs.map((dev, i) => (
           <div
             key={i}
-            className={`p-6 rounded-xl backdrop-blur text-center transition hover:scale-105 
-              ${dev.highlight 
-                ? "border border-[#f0c060] shadow-lg shadow-[#f0c060]/20 bg-white/5" 
-                : "border border-white/10 bg-white/5"
-              }`}
+            className="team-card"
           >
             {/* Avatar */}
-            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#f0c060]/20 flex items-center justify-center text-lg font-bold">
+            <div className="team-avatar">
               {dev.name[0]}
             </div>
 
@@ -89,10 +86,10 @@ export default function Developers() {
             <h2 className="text-lg font-semibold">{dev.name}</h2>
 
             {/* Role */}
-            <p className="text-[#f0c060] text-sm">{dev.role}</p>
+            <p className="team-role">{dev.role}</p>
 
             {/* Description */}
-            <p className="mt-3 text-gray-400 text-sm">
+            <p className="mt-3 text-slate-300 text-sm">
               {dev.desc}
             </p>
 
@@ -123,8 +120,8 @@ export default function Developers() {
       </section>
 
       {/* FOOTER */}
-      <footer className="mt-20 text-center text-gray-500 pb-10">
-        © {new Date().getFullYear()} LearnX AI. All rights reserved.
+      <footer className="public-footer">
+        © {new Date().getFullYear()} SmartLearn. All rights reserved.
       </footer>
 
     </div>

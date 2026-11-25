@@ -14,7 +14,7 @@ const lectureSchema = new mongoose.Schema({
   fileUrl: { type: String },
   fileType: {
     type: String,
-    enum: ['video', 'pdf', 'slides', 'youtube'],
+    enum: ['video', 'pdf', 'slides', 'youtube', 'reading'],
   },
   youtubeUrl: { type: String },
   youtubeVideoId: { type: String },
@@ -26,6 +26,7 @@ const lectureSchema = new mongoose.Schema({
     enum: ['pending', 'processing', 'completed', 'failed', 'unavailable'],
     default: 'pending',
   },
+  indexStatus: { type: String, enum: ["completed","failed"] },
   transcriptError: { type: String, default: '' },
   quizStatus: {
     type: String,
@@ -35,7 +36,7 @@ const lectureSchema = new mongoose.Schema({
   quizError: { type: String, default: '' },
   status: {
     type: String,
-    enum: ['pending', 'processing', 'done', 'failed'],
+    enum: ['pending', 'processing', 'done', 'partial', 'failed'],
     default: 'pending',
   },
   createdAt: { type: Date, default: Date.now },

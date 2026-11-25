@@ -1,48 +1,32 @@
+import Brand from "@/components/Brand";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { useAuth } from "../../context/AuthContext";
 import { Home, Book, Bot, BarChart, Settings } from "lucide-react";
 import { motion } from "framer-motion";
-import {
-  Radar,
-  RadarChart,
-  PolarGrid,
-  PolarAngleAxis,
-  ResponsiveContainer,
-} from "recharts";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import LearningOverview from "@/components/LearningOverview";
+import api from "@/lib/api";
 
 export default function StudentDashboard() {
-  const [courses, setCourses] = useState([]);
-  const { user } = useAuth();
+  const [engagementSessions, setEngagementSessions] = useState([]);
+  const { user, logout } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    // ✅ ONLY ENROLLED COURSES
-    setCourses([
-      {
-        _id: "1",
-        title: "AI Mastery",
-        lectures: 10,
-      },
-    ]);
-  }, []);
-
-  const skillData = [
-    { subject: "AI", A: 80 },
-    { subject: "ML", A: 70 },
-    { subject: "NLP", A: 60 },
-    { subject: "CV", A: 75 },
-    { subject: "Data", A: 65 },
-  ];
+    if (!user?.id) return;
+    api.get("/analytics/engagement/sessions")
+      .then((response) => setEngagementSessions(response.data.sessions || []))
+      .catch(() => setEngagementSessions([]));
+  }, [user?.id]);
 
   return (
     <ProtectedRoute>
-      <div className="flex min-h-screen bg-gradient-to-br from-[#020617] via-black to-black text-white">
+      <div className="workspace-shell">
         {/* SIDEBAR */}
-        <div className="w-64 p-6 border-r border-white/10 backdrop-blur-xl">
-          <h1 className="text-2xl font-bold text-yellow-400 mb-10">
-            LearnX AI
+        <div className="workspace-nav">
+          <h1 className="workspace-wordmark">
+            <Brand />
           </h1>
 
           <nav className="space-y-4">
@@ -52,66 +36,50 @@ export default function StudentDashboard() {
               text="Courses"
               onClick={() => router.push("/courses")}
             />
-            <SidebarItem icon={<Bot />} text="AI Tutor" />
-            <SidebarItem icon={<BarChart />} text="Progress" />
-            <SidebarItem icon={<Settings />} text="Settings" />
+            <SidebarItem icon={<Settings />} text="Sign out" onClick={() => { logout(); router.push("/login"); }} />
           </nav>
         </div>
 
         {/* MAIN */}
-        <div className="flex-1 p-8 space-y-6">
+        <div className="workspace-main space-y-6">
           {/* HERO */}
-          <motion.div className="p-6 rounded-2xl bg-gradient-to-r from-yellow-400/10 to-amber-500/10 border border-white/10 flex justify-between items-center">
+          <motion.div className="welcome-banner">
             <div>
               <h2 className="text-3xl font-bold">
-                Welcome {user?.name || "Student"}, 👋
+                Welcome, {user?.name || "Student"}
               </h2>
-              <p className="text-white/70 mt-2">
+              <p className="text-slate-300 mt-2">
                 Continue your learning journey.
               </p>
             </div>
 
-            <div className="text-5xl">📚</div>
+            <div className="welcome-art" aria-hidden="true" />
           </motion.div>
 
           {/* GRID */}
-          <div className="grid md:grid-cols-3 gap-6">
+          <div className="workspace-grid">
             {/* ✅ COURSES (UPDATED) */}
-            <GlassCard title="Enrolled Courses">
-              {courses.map((course) => (
-                <div
-                  key={course._id}
-                  onClick={() => router.push(`/courses/${course._id}`)}
-                  className="mb-4 cursor-pointer hover:bg-white/10 p-3 rounded"
-                >
-                  <h3 className="font-semibold">{course.title}</h3>
-                  <p className="text-sm text-gray-400">
-                    {course.lectures} lectures
-                  </p>
-                </div>
-              ))}
-            </GlassCard>
-
-            {/* AI Tutor */}
-            <GlassCard title="AI Tutor">
-              <HoverItem text="Ask doubts about ML" />
-              <HoverItem text="Revise NLP concepts" />
-            </GlassCard>
+            <GlassCard title="My learning"><LearningOverview user={user}/></GlassCard>
 
             {/* SKILL */}
             <GlassCard title="Your Progress">
-              <ResponsiveContainer width="100%" height={200}>
-                <RadarChart data={skillData}>
-                  <PolarGrid stroke="#ffffff20" />
-                  <PolarAngleAxis dataKey="subject" stroke="#ccc" />
-                  <Radar
-                    dataKey="A"
-                    stroke="#facc15"
-                    fill="#facc15"
-                    fillOpacity={0.3}
-                  />
-                </RadarChart>
-              </ResponsiveContainer>
+              <p className="mb-3 text-xs text-slate-300">Session observations are estimates and do not measure learning.</p>
+              {engagementSessions.length === 0 ? <p className="text-sm text-slate-300">No opted-in session summaries yet.</p> : (
+                <div className="space-y-3">
+                  {engagementSessions.slice(0, 5).map((session) => (
+                    <div key={`${session.sessionId}-${session._id}`} className="rounded-lg bg-slate-800 p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="truncate text-sm">{session.lectureId?.title || "Lecture"}</span>
+                        <span className="text-xs text-blue-300">{session.trackingMode === "camera" ? "Camera assisted" : session.trackingMode === "behavioral" ? "Playback only" : "Historical log"}</span>
+                      </div>
+                      <div className="mt-1 text-xs text-slate-300">
+                        {Math.round(((session.watchedDurationSec ?? session.sessionDurationSec) || 0) / 60)} min observed · {Math.round((session.tabFocusRatio || 0) * 100)}% tab visible
+                        {session.averageScore != null ? ` · ${Math.round(session.averageScore * 100)}% estimate` : ""}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </GlassCard>
           </div>
         </div>
@@ -126,11 +94,7 @@ function SidebarItem({ icon, text, active, onClick }) {
   return (
     <div
       onClick={onClick}
-      className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer ${
-        active
-          ? "bg-gradient-to-r from-yellow-400/20 to-amber-500/20"
-          : "hover:bg-white/10"
-      }`}
+      className={`workspace-nav-item ${active ? "is-active" : ""}`}
     >
       {icon}
       <span>{text}</span>
@@ -140,7 +104,7 @@ function SidebarItem({ icon, text, active, onClick }) {
 
 function GlassCard({ title, children }) {
   return (
-    <div className="p-5 rounded-2xl bg-white/5 border border-white/10">
+    <div className="surface-card">
       <h3 className="mb-4">{title}</h3>
       {children}
     </div>
@@ -149,7 +113,7 @@ function GlassCard({ title, children }) {
 
 function HoverItem({ text }) {
   return (
-    <div className="p-2 hover:bg-white/10 rounded cursor-pointer flex justify-between">
+    <div className="p-2 hover:bg-slate-800 rounded cursor-pointer flex justify-between">
       {text} <span>→</span>
     </div>
   );

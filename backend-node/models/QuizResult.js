@@ -26,11 +26,15 @@ const quizResultSchema = new mongoose.Schema({
     type: [Number],
     default: [],
   },
+  outcomes: { type: [{ topic: String, correct: Boolean, question: String, explanation: String }], default: undefined },
+  attemptKey: {type: String},
   submittedAt: {
     type: Date,
     default: Date.now,
   },
 });
+
+quizResultSchema.index({studentId:1, quizId:1, attemptKey:1}, {unique:true, partialFilterExpression:{attemptKey:{$type:"string"}}});
 
 const QuizResult = mongoose.model('QuizResult', quizResultSchema);
 

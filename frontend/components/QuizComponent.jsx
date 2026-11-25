@@ -112,15 +112,15 @@ export default function QuizComponent({ lectureId }) {
   // START
   if (!started) {
     return (
-      <div className="min-h-screen w-full bg-black text-white flex items-center justify-center">
+      <div className="min-h-screen w-full bg-slate-950 text-white flex items-center justify-center">
         <div className="w-full min-h-screen flex justify-center items-center bg-white/5">
           <div className="p-10 text-center w-full max-w-2xl">
-            <h2 className="text-3xl font-bold text-yellow-400 mb-6">
+            <h2 className="text-3xl font-bold text-indigo-200 mb-6">
               Ready for Quiz?
             </h2>
             <button
               onClick={() => setStarted(true)}
-              className="px-8 py-3 text-lg bg-yellow-400 text-black rounded-xl font-semibold"
+              className="px-8 py-3 text-lg bg-indigo-200 text-slate-950 rounded-xl font-semibold"
             >
               Start Quiz
             </button>
@@ -133,15 +133,15 @@ export default function QuizComponent({ lectureId }) {
   // RESULT
   if (submitted) {
     return (
-      <div className="min-h-screen w-full bg-black text-white flex items-center justify-center">
+      <div className="min-h-screen w-full bg-slate-950 text-white flex items-center justify-center">
         <div className="w-full min-h-screen flex justify-center items-center bg-white/5">
           <div className="p-10 text-center w-full max-w-2xl">
-            <h2 className="text-4xl font-bold text-yellow-400 mb-6">
+            <h2 className="text-4xl font-bold text-indigo-200 mb-6">
               {score} / {questions.length}
             </h2>
             <button
               onClick={() => window.location.reload()}
-              className="px-8 py-3 text-lg bg-yellow-400 text-black rounded-xl font-semibold"
+              className="px-8 py-3 text-lg bg-indigo-200 text-slate-950 rounded-xl font-semibold"
             >
               Restart Quiz
             </button>
@@ -153,11 +153,11 @@ export default function QuizComponent({ lectureId }) {
 
   // MAIN QUIZ
   return (
-    <div className="min-h-screen w-full bg-black text-white">
+    <div className="min-h-screen w-full bg-slate-950 text-white">
       <div className="w-full min-h-screen bg-white/5 flex justify-center">
         <div className="w-full max-w-4xl p-8 md:p-12">
 
-          <h3 className="text-yellow-400 mb-3 text-sm md:text-base tracking-wide">
+          <h3 className="text-indigo-200 mb-3 text-sm md:text-base tracking-wide">
             Question {currentIndex + 1} / {questions.length}
           </h3>
 
@@ -214,7 +214,7 @@ export default function QuizComponent({ lectureId }) {
               }
             }}
             disabled={answers[currentIndex] === null}
-            className="mt-6 w-full bg-yellow-400 text-black py-3 text-lg rounded-xl font-semibold"
+            className="mt-6 w-full bg-indigo-200 text-slate-950 py-3 text-lg rounded-xl font-semibold"
           >
             {!revealed[currentIndex]
               ? "Check Answer"
